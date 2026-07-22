@@ -2,7 +2,7 @@
 
 # RMN-Player
 
-A custom media player for Windows with pre-configured settings, custom icon, and modern UI.
+A custom media player for Windows with pre-configured settings, custom icon, and modern UI Using the Gold Old MPV-Player core.
 
 </div>
 
