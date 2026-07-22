@@ -24,7 +24,7 @@ A custom media player for Windows with pre-configured settings, custom icon, and
   <tr>
     <td align="center">
       <img src="https://github.com/user-attachments/assets/ae7127c6-56ef-4459-9f2a-805110f60309" alt="RMN-Player Audio Subtitle Settings" width="400"/>
-      <p>Auto create playlist of your tvshow</p>
+      <p>Auto Create Playlist of your Tvshow</p>
     </td>
     <td align="center">
       <img src="https://github.com/user-attachments/assets/4238b586-d650-46d3-bcc9-d929ebe81262" alt="RMN-Player Playlist" width="400"/>
