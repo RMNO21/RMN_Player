@@ -7,9 +7,6 @@
 mpv/portable_config/
 mpv/watch_later/
 
-# ResourceHacker temp files
-tools/*.zip
-
 # Windows
 Thumbs.db
 Desktop.ini

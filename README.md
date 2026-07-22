@@ -2,7 +2,9 @@
 
 # RMN-Player
 
-A custom media player for Windows with pre-configured settings, custom icon, and modern UI.
+A custom media player for Windows with pre-configured settings and modern UI.
+
+**100% Offline - No internet required - Just copy and run**
 
 </div>
 
@@ -39,11 +41,12 @@ A custom media player for Windows with pre-configured settings, custom icon, and
 
 | Feature | Description |
 |---------|-------------|
-| True Darkness| Professional Light Adjustment had been Set|
+| **100% Offline** | No internet required - everything is bundled |
+| **No Installation** | Just copies files, no complex installer |
+| True Darkness | Professional Light Adjustment had been Set |
 | Episode Tracker | Track watched episodes, TV show progress, and resume position |
 | Thumbnail Preview | Hover over timeline for video previews |
 | Modern UI | Clean interface with uosc |
-| Auto-Install | Configures player automatically |
 | File Associations | Sets RMN-Player as default for video and audio files |
 | PATH Setup | Add RMN-Player to system PATH for command-line use |
 
@@ -53,18 +56,31 @@ A custom media player for Windows with pre-configured settings, custom icon, and
 
 ### Requirements
 - Windows 10/11 (64-bit)
-- 7-Zip (automatically installed if missing)
+- **No external dependencies** - everything is included
 
 ### Installation
 
 1. Clone or download this repository
-2. Run `Install-RMN.bat` as administrator
-3. Follow the on-screen prompts
+2. Run `Install-RMN.bat`
+3. Done!
 
 ```powershell
 # Or use command line
 .\rmn-installer.ps1
 ```
+
+**That's it!** The installer simply copies the bundled player files to your system.
+
+---
+
+## What's Included
+
+The `player/` folder contains everything you need:
+- `mpv.exe` - The media player
+- `mpv.com` - Console version
+- Required DLLs (d3dcompiler_43.dll, vulkan-1.dll)
+
+No downloads, no 7-Zip, no external tools required.
 
 ---
 
@@ -123,18 +139,16 @@ All config files are stored at `%APPDATA%\RMN-Player\`:
 ## Project Structure
 
 ```
-rmn-installer/
-├── Install-RMN.bat        # Run as admin to install
-├── rmn-installer.ps1      # Main installer script
+RMN-Player/
+├── Install-RMN.bat        # Run to install (no admin required)
+├── rmn-installer.ps1      # Simple copy installer
 ├── uninstall.ps1          # Uninstaller
 ├── config/                # Player configuration
 │   ├── player.conf        # Video settings
 │   ├── input.conf         # Keybindings
-│   ├── rmn-icon.ico       # Custom app icon
 │   ├── scripts/           # uosc, thumbfast, episode tracker
 │   └── script-opts/       # Script settings
-├── player/                # Bundled player binaries
-└── tools/                 # ResourceHacker (for icon patching)
+└── player/                # Bundled player (mpv + DLLs)
 ```
 
 ---
@@ -145,7 +159,7 @@ rmn-installer/
 # Install/Update
 .\rmn-installer.ps1
 
-# Config only (skip player download)
+# Config only (skip player copy)
 .\rmn-installer.ps1 -ConfigOnly
 
 # Force reinstall (fresh start)
@@ -182,15 +196,6 @@ Run with `-ConfigOnly` flag to reconfigure:
 Run with `-ConfigOnly` flag, or manually edit files in `%APPDATA%\RMN-Player\`.
 </details>
 
-<details>
-<summary><b>Icon not showing in Alt+Tab</b></summary>
-
-The installer patches the player executable with a custom icon. If the icon doesn't appear:
-
-1. Restart your computer
-2. Run the installer again with `-Force` flag
-</details>
-
 ---
 
 ## License
@@ -206,7 +211,6 @@ GNU General Public License v3.0 - see [LICENSE](LICENSE) for details.
 - [uosc](https://github.com/tomasklaen/uosc) - Modern UI framework
 - [thumbfast](https://github.com/po5/thumbfast) - Thumbnail preview
 - [autoload.lua](https://github.com/mpv-player/mpv) - Playlist autoloading
-- [Resource Hacker](https://www.angusj.com/resourcehacker/) - PE resource editing
 
 ---
 
