@@ -1,13 +1,12 @@
 @echo off
-title RMN-Player Installer
+title RMN-Player Offline Installer
 echo.
 echo ========================================
-echo    RMN-Player Installer
+echo    RMN-Player Offline Installer
 echo ========================================
 echo.
-echo This will install/update RMN-Player and configure it with your settings.
-echo.
-echo Required: 7-Zip (will be installed if missing)
+echo This will install/update RMN-Player.
+echo No internet connection required.
 echo.
 pause
 echo.
