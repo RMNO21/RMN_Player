@@ -39,7 +39,7 @@ A custom media player for Windows with pre-configured settings, custom icon, and
 
 | Feature | Description |
 |---------|-------------|
-| Custom Icon | Professional icon with full Alt+Tab and Explorer integration |
+| Customized Darkness | Professional light & darkness adjusted by default |
 | Episode Tracker | Track watched episodes, TV show progress, and resume position |
 | Thumbnail Preview | Hover over timeline for video previews |
 | Modern UI | Clean interface with uosc |
