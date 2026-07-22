@@ -1,6 +1,11 @@
 # RMN-Player
 
 A custom media player for Windows with pre-configured settings, custom icon, and modern UI.
+<img width="1439" height="778" alt="image" src="https://github.com/user-attachments/assets/38ce66e9-d0ef-442f-a7a1-82cac28ed969" />
+<img width="1440" height="810" alt="image" src="https://github.com/user-attachments/assets/b319ffc7-5657-4dad-9cf8-eb6fc8006321" />
+<img width="1440" height="810" alt="image" src="https://github.com/user-attachments/assets/ae7127c6-56ef-4459-9f2a-805110f60309" />
+<img width="1439" height="778" alt="image" src="https://github.com/user-attachments/assets/4238b586-d650-46d3-bcc9-d929ebe81262" />
+
 
 ## Features
 
