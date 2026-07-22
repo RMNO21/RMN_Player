@@ -18,17 +18,17 @@ A custom media player for Windows with pre-configured settings, custom icon, and
     </td>
     <td align="center">
       <img src="https://github.com/user-attachments/assets/b319ffc7-5657-4dad-9cf8-eb6fc8006321" alt="RMN-Player Thumbnail Preview" width="400"/>
-      <p>Video Playback with Thumbnail Preview</p>
+      <p>Playlist & Episode Tracker</p>
     </td>
   </tr>
   <tr>
     <td align="center">
       <img src="https://github.com/user-attachments/assets/ae7127c6-56ef-4459-9f2a-805110f60309" alt="RMN-Player Audio Subtitle Settings" width="400"/>
-      <p>Audio & Subtitle Track Settings</p>
+      <p>Auto create playlist of your tvshow</p>
     </td>
     <td align="center">
       <img src="https://github.com/user-attachments/assets/4238b586-d650-46d3-bcc9-d929ebe81262" alt="RMN-Player Playlist" width="400"/>
-      <p>Playlist & Episode Tracker</p>
+      <p>Video Playback with Thumbnail Preview</p>
     </td>
   </tr>
 </table>
