@@ -164,6 +164,23 @@ local function init_db()
         end
     end
     if not db.episodes then db.episodes = {} end
+
+    -- Normalize path keys: merge backslash entries into forward-slash entries
+    local normalized = {}
+    for key, entry in pairs(db.episodes) do
+        local norm_key = key:gsub("\\", "/"):lower()
+        if normalized[norm_key] then
+            -- Merge: keep the entry with more data (higher position or duration)
+            local existing = normalized[norm_key]
+            if (entry.position or 0) > (existing.position or 0) or
+               (entry.duration or 0) > (existing.duration or 0) then
+                normalized[norm_key] = entry
+            end
+        else
+            normalized[norm_key] = entry
+        end
+    end
+    db.episodes = normalized
 end
 
 local function save_db()
@@ -273,14 +290,14 @@ local function track_playback()
         end
     end
 
-    -- Update show metadata
+    -- Update show metadata (always update duration regardless of watched status)
     entry.show = folder or entry.show or "Unknown"
     entry.season = season or entry.season or 0
     entry.episode = episode or entry.episode or 0
     entry.filename = filename
     entry.filepath = path
     entry.dirpath = parent
-    entry.duration = dur
+    if dur > 0 then entry.duration = dur end
 
     -- KEY FIX: once watched=true, never overwrite it with position data
     if pct >= WATCHED_THRESHOLD and not entry.watched then
@@ -293,6 +310,9 @@ local function track_playback()
     if not entry.watched or rewatch_active then
         entry.position = pos
     end
+
+    -- Always update last_watch timestamp
+    entry.last_watch = os.time()
 
     -- Update last_played
     db.last_played = {
@@ -609,7 +629,7 @@ save_timer = mp.add_periodic_timer(2, function()
         track_playback()
     end
 end)
-save_timer:kill()
+save_timer:stop()
 
 mp.observe_property("pause", "bool", function(_, paused)
     if paused then save_timer:stop() else save_timer:resume() end
