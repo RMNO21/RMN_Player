@@ -14,7 +14,7 @@ param(
     [switch]$ConfigOnly
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
 $ProgressPreference = "SilentlyContinue"
 
 # === CONFIGURATION ===
@@ -109,19 +109,17 @@ function Install-ConfigFiles {
     # Copy config files from package
     if (Test-Path $PackageConfigDir) {
         # Main config files
-        if (Test-Path "$PackageConfigDir\player.conf") {
-            Copy-Item -Path "$PackageConfigDir\player.conf" -Destination $ConfigDir -Force
-            Write-Status "Copied player.conf" "Info"
-        }
-        if (Test-Path "$PackageConfigDir\input.conf") {
-            Copy-Item -Path "$PackageConfigDir\input.conf" -Destination $ConfigDir -Force
-            Write-Status "Copied input.conf" "Info"
-        }
-        
-        # Episode tracker data
-        if (Test-Path "$PackageConfigDir\episode-tracker.json") {
-            Copy-Item -Path "$PackageConfigDir\episode-tracker.json" -Destination $ConfigDir -Force
-            Write-Status "Copied episode-tracker.json" "Info"
+        $configFiles = @("mpv.conf", "input.conf", "episode-tracker.json")
+        foreach ($file in $configFiles) {
+            $src = Join-Path $PackageConfigDir $file
+            if (Test-Path $src) {
+                try {
+                    Copy-Item -Path $src -Destination $ConfigDir -Force
+                    Write-Status "Copied $file" "Info"
+                } catch {
+                    Write-Status "Failed to copy $file : $($_.Exception.Message)" "Warning"
+                }
+            }
         }
         
         # Script options
