@@ -2,153 +2,95 @@
 
 # RMN-Player
 
-A custom media player for Windows with pre-configured settings and modern UI.
+A high-performance custom media player for Windows with OLED-tuned rendering, intelligent series tracking, dynamic ambient background lighting, and modern UI.
 
-**100% Offline - No internet required - Just copy and run**
+**100% Offline • Zero Dependencies • Native Windows Integration**
 
 </div>
 
 ---
 
-## Screenshots
-
-<table border="0">
-  <tr>
-    <td align="center">
-      <img src="https://github.com/user-attachments/assets/38ce66e9-d0ef-442f-a7a1-82cac28ed969" alt="RMN-Player Main UI" width="400"/>
-      <p>Main Interface with uosc Menu</p>
-    </td>
-    <td align="center">
-      <img src="https://github.com/user-attachments/assets/b319ffc7-5657-4dad-9cf8-eb6fc8006321" alt="RMN-Player Thumbnail Preview" width="400"/>
-      <p>Video Playback with Thumbnail Preview</p>
-    </td>
-  </tr>
-  <tr>
-    <td align="center">
-      <img src="https://github.com/user-attachments/assets/ae7127c6-56ef-4459-9f2a-805110f60309" alt="RMN-Player Audio Subtitle Settings" width="400"/>
-      <p>Audio & Subtitle Track Settings</p>
-    </td>
-    <td align="center">
-      <img src="https://github.com/user-attachments/assets/4238b586-d650-46d3-bcc9-d929ebe81262" alt="RMN-Player Playlist" width="400"/>
-      <p>Playlist & Episode Tracker</p>
-    </td>
-  </tr>
-</table>
-
----
-
-## Features
+## Key Features
 
 | Feature | Description |
-|---------|-------------|
-| **100% Offline** | No internet required - everything is bundled |
-| **No Installation** | Just copies files, no complex installer |
-| True Darkness | Professional Light Adjustment had been Set |
-| Episode Tracker | Track watched episodes, TV show progress, and resume position |
-| Thumbnail Preview | Hover over timeline for video previews |
-| Modern UI | Clean interface with uosc |
-| File Associations | Sets RMN-Player as default for video and audio files |
-| PATH Setup | Add RMN-Player to system PATH for command-line use |
+| :--- | :--- |
+| **Dynamic Ambient Fill & Blur** | Real-time color-adaptive ambient halo / blurred extension for letterbox and pillarbox bars. Single-axis stretching with zero crop and zero overhead when off. |
+| **Smart TV Show Autoloading** | Intelligently identifies same-show episodes across naming styles (`Georgie and Mandy`, `True Detective`) and sorts chronologically while isolating single movies. |
+| **Clean Title Sanitizer** | Displays clean video titles without website ads or release tags (e.g. `ValaMovie.Com`). |
+| **Unified 3-State Looper** | Single smart button and key shortcut cycling: `Off` → `Loop Playlist (All)` → `Loop Current Episode (One)`. |
+| **Dual EN / FA Keyboard Support** | All keyboard shortcuts work seamlessly whether Windows keyboard is set to English or Persian. |
+| **Native File Dialog** | Opens native Windows Explorer file picker for selecting media files asynchronously. |
+| **OLED True Black & Debanding** | Native 10-bit dithered pipeline with libplacebo debanding for clean gradients and true blacks. |
+| **Fast Timeline Previews** | High-speed hover thumbnails via `thumbfast`. |
+| **Modern Minimal UI** | Elegant floating controls powered by `uosc`. |
 
 ---
 
 ## Quick Start
 
-### Requirements
-- Windows 10/11 (64-bit)
-- **No external dependencies** - everything is included
-
 ### Installation
 
-1. Clone or download this repository
+1. Download or clone this repository
 2. Run `Install-RMN.bat`
 3. Done!
 
 ```powershell
-# Or use command line
+# Or run via PowerShell:
 .\rmn-installer.ps1
 ```
 
-**That's it!** The installer simply copies the bundled player files to your system.
-
 ---
 
-## What's Included
+## Keyboard & Mouse Shortcuts
 
-The `player/` folder contains everything you need:
-- `mpv.exe` - The media player
-- `mpv.com` - Console version
-- Required DLLs (d3dcompiler_43.dll, vulkan-1.dll)
+All letter shortcuts are mapped for both **English (EN)** and **Persian (FA)** keyboard layouts:
 
-No downloads, no 7-Zip, no external tools required.
-
----
-
-## Key Bindings
-
-| Key | Action |
-|-----|--------|
-| `ENTER` | Toggle fullscreen |
-| `LEFT/RIGHT` | Seek 3 seconds |
-| `UP/DOWN` | Adjust volume (5%) |
-| `m` | Open menu (uosc) |
-| `c` | Subtitles |
-| `a` | Audio tracks |
-
----
-
-## Menu Features
-
-Press `m` to open the menu:
-
-- **Subtitles** - Select and configure subtitle tracks
-- **Audio tracks** - Select and configure audio tracks
-- **Stream quality** - Change stream quality for online content
-- **Playlist** - View and manage playlist
-- **Chapters** - Navigate chapters
-- **Navigation** - Next/Prev file, delete file, open file
-- **Episode Tracker** - Episode status, TV show progress, mark watched/unwatched
-- **Utils** - Aspect ratio, audio devices, screenshots, key bindings
+| Key (EN / FA) | Action |
+| :--- | :--- |
+| <kbd>Right Click</kbd> | Open context menu anywhere |
+| <kbd>Double Click</kbd> / <kbd>Enter</kbd> | Toggle Fullscreen |
+| <kbd>Space</kbd> | Play / Pause |
+| <kbd>→</kbd> / <kbd>←</kbd> | Seek $\pm 3$ seconds |
+| <kbd>Shift</kbd> + <kbd>→</kbd> / <kbd>←</kbd> | Seek $\pm 30$ seconds |
+| <kbd>Ctrl</kbd> + <kbd>→</kbd> / <kbd>←</kbd> | Save position & go to Next / Previous episode |
+| <kbd>Mouse Wheel</kbd> / <kbd>↑</kbd> / <kbd>↓</kbd> | Volume $\pm 5\%$ |
+| <kbd>b</kbd> / <kbd>ذ</kbd> | **Cycle Background Mode** in Fullscreen (`Normal` → `Blur` → `Ambient Glow`) |
+| <kbd>l</kbd> / <kbd>م</kbd> | **Cycle Loop Mode** (`Off` → `Playlist (All)` → `Current Episode (One)`) |
+| <kbd>d</kbd> / <kbd>ی</kbd> | Toggle OLED Deband filter (`cycle deband`) |
+| <kbd>m</kbd> / <kbd>ئ</kbd> | Mute / Unmute audio |
+| <kbd>c</kbd> / <kbd>ز</kbd> | Subtitles menu |
+| <kbd>v</kbd> / <kbd>ر</kbd> | Toggle subtitle visibility |
+| <kbd>a</kbd> / <kbd>ش</kbd> | Audio tracks menu |
+| <kbd>o</kbd> / <kbd>خ</kbd> | Open Windows Explorer file dialog |
+| <kbd>u</kbd> / <kbd>ع</kbd> | Open URL popup to stream links |
+| <kbd>s</kbd> / <kbd>س</kbd> | Screenshot |
+| <kbd>Tab</kbd> | Toggle UI visibility |
 
 ---
 
 ## Configuration
 
-All config files are stored at `%APPDATA%\RMN-Player\`:
+Configuration files are installed at `%APPDATA%\RMN-Player\`:
 
 ```
 %APPDATA%\RMN-Player\
-├── player.conf            # Main configuration
-├── input.conf             # Key bindings
-├── episode-tracker.json   # Episode tracking database
+├── mpv.conf               # Video & audio rendering pipeline
+├── input.conf             # Bilingual keybindings & mouse actions
+├── episode-tracker.json   # Local episode tracking database
 ├── script-opts/
-│   ├── thumbfast.conf     # Thumbnail settings
-│   ├── uosc.conf          # UI settings
-│   └── autoload.conf      # Playlist settings
+│   ├── uosc.conf          # Modern UI layout & tokens
+│   ├── thumbfast.conf     # Thumbnail preview settings
+│   └── autoload.conf      # Smart playlist settings
 ├── scripts/
+│   ├── ambient-fill.lua   # Dynamic ambient lighting & blur engine
+│   ├── autoload.lua       # Intelligent TV show detection & sorting
+│   ├── episode-tracker.lua# Watched tracking & resume
+│   ├── loop-cycle.lua     # Unified 3-state loop controller
+│   ├── open-url.lua       # Online streaming input popup
+│   ├── save-position.lua  # Resume playback manager
 │   ├── thumbfast.lua      # Thumbnail engine
-│   ├── autoload.lua       # Auto-load playlist
-│   ├── episode-tracker.lua
-│   ├── save-position.lua
-│   └── uosc/              # Modern UI
-└── fonts/                 # UI fonts
-```
-
----
-
-## Project Structure
-
-```
-RMN-Player/
-├── Install-RMN.bat        # Run to install (no admin required)
-├── rmn-installer.ps1      # Simple copy installer
-├── uninstall.ps1          # Uninstaller
-├── config/                # Player configuration
-│   ├── player.conf        # Video settings
-│   ├── input.conf         # Keybindings
-│   ├── scripts/           # uosc, thumbfast, episode tracker
-│   └── script-opts/       # Script settings
-└── player/                # Bundled player (mpv + DLLs)
+│   └── uosc/              # UI framework
+└── fonts/                 # High-legibility UI typography
 ```
 
 ---
@@ -156,45 +98,15 @@ RMN-Player/
 ## Command Line Options
 
 ```powershell
-# Install/Update
+# Standard Install / Update
 .\rmn-installer.ps1
 
-# Config only (skip player copy)
+# Update Configuration Only (skip binary copy)
 .\rmn-installer.ps1 -ConfigOnly
 
-# Force reinstall (fresh start)
+# Force Reinstallation
 .\rmn-installer.ps1 -Force
 ```
-
----
-
-## Uninstall
-
-Run the uninstaller from Start Menu, or manually:
-
-1. Delete `%LOCALAPPDATA%\RMN-Player\`
-2. Delete `%APPDATA%\RMN-Player\`
-3. Remove RMN-Player from PATH (optional)
-
----
-
-## Troubleshooting
-
-<details>
-<summary><b>Thumbnail not working</b></summary>
-
-Run with `-ConfigOnly` flag to reconfigure:
-
-```powershell
-.\rmn-installer.ps1 -ConfigOnly
-```
-</details>
-
-<details>
-<summary><b>Config not updating</b></summary>
-
-Run with `-ConfigOnly` flag, or manually edit files in `%APPDATA%\RMN-Player\`.
-</details>
 
 ---
 
@@ -203,19 +115,3 @@ Run with `-ConfigOnly` flag, or manually edit files in `%APPDATA%\RMN-Player\`.
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
 GNU General Public License v3.0 - see [LICENSE](LICENSE) for details.
-
----
-
-## Credits
-
-- [uosc](https://github.com/tomasklaen/uosc) - Modern UI framework
-- [thumbfast](https://github.com/po5/thumbfast) - Thumbnail preview
-- [autoload.lua](https://github.com/mpv-player/mpv) - Playlist autoloading
-
----
-
-<div align="center">
-
-**Made with ❤️ for media enthusiasts**
-
-</div>
