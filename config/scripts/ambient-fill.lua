@@ -152,21 +152,21 @@ local function apply_filter()
         local scale_h = math.floor(vh / 4 / 2) * 2
         local overlay_coords = is_letterbox and "0:(H-h)/2" or "(W-w)/2:0"
         vf_str = string.format(
-            "lavfi=[split [fg][bg]; [bg]format=yuv420p,scale=%d:%d:flags=fast_bilinear,avgblur=sizeX=6:sizeY=6,scale=%d:%d:flags=bilinear,eq=brightness=-0.1:contrast=0.92[bg_blur]; [bg_blur][fg]overlay=%s:eof_action=pass:repeatlast=0,setsar=1]",
+            "lavfi=[split [fg][bg]; [fg]fifo[fg_q]; [bg]format=yuv420p,scale=%d:%d:flags=fast_bilinear,avgblur=sizeX=6:sizeY=6,scale=%d:%d:flags=bilinear,eq=brightness=-0.1:contrast=0.92[bg_blur]; [bg_blur][fg_q]overlay=%s:eof_action=pass:repeatlast=0:shortest=1,setsar=1]",
             scale_w, scale_h, target_w, target_h, overlay_coords
         )
     elseif mode_id == "ambient" then
-        -- Ultra-Lean vstack/hstack High-Contrast Ambilight:
+        -- Ultra-Lean vstack/hstack High-Contrast Ambilight with FIFO & shortest=1:
         local crop_d = 20
         if is_letterbox then
             vf_str = string.format(
-                "lavfi=[split=3[fg][s_top][s_bot]; [s_top]crop=%d:%d:0:0,scale=100:10:flags=fast_bilinear,eq=contrast=1.75:brightness=-0.08:saturation=1.85:gamma=0.68,avgblur=sizeX=20:sizeY=6,scale=%d:%d:flags=bilinear[top_glow]; [s_bot]crop=%d:%d:0:%d,scale=100:10:flags=fast_bilinear,eq=contrast=1.75:brightness=-0.08:saturation=1.85:gamma=0.68,avgblur=sizeX=20:sizeY=6,scale=%d:%d:flags=bilinear[bot_glow]; [top_glow][fg][bot_glow]vstack=3,setsar=1]",
+                "lavfi=[split=3[s_top][fg][s_bot]; [fg]fifo[fg_q]; [s_top]crop=%d:%d:0:0,scale=100:10:flags=fast_bilinear,eq=contrast=1.75:brightness=-0.08:saturation=1.85:gamma=0.68,avgblur=sizeX=20:sizeY=6,scale=%d:%d:flags=bilinear[top_glow]; [s_bot]crop=%d:%d:0:%d,scale=100:10:flags=fast_bilinear,eq=contrast=1.75:brightness=-0.08:saturation=1.85:gamma=0.68,avgblur=sizeX=20:sizeY=6,scale=%d:%d:flags=bilinear[bot_glow]; [top_glow][fg_q][bot_glow]vstack=inputs=3:shortest=1,setsar=1]",
                 vw, crop_d, vw, bar_size,
                 vw, crop_d, vh - crop_d, vw, bar_size
             )
         else
             vf_str = string.format(
-                "lavfi=[split=3[fg][s_lft][s_rgt]; [s_lft]crop=%d:%d:0:0,scale=10:100:flags=fast_bilinear,eq=contrast=1.75:brightness=-0.08:saturation=1.85:gamma=0.68,avgblur=sizeX=6:sizeY=20,scale=%d:%d:flags=bilinear[lft_glow]; [s_rgt]crop=%d:%d:%d:0,scale=10:100:flags=fast_bilinear,eq=contrast=1.75:brightness=-0.08:saturation=1.85:gamma=0.68,avgblur=sizeX=6:sizeY=20,scale=%d:%d:flags=bilinear[rgt_glow]; [lft_glow][fg][rgt_glow]hstack=3,setsar=1]",
+                "lavfi=[split=3[s_lft][fg][s_rgt]; [fg]fifo[fg_q]; [s_lft]crop=%d:%d:0:0,scale=10:100:flags=fast_bilinear,eq=contrast=1.75:brightness=-0.08:saturation=1.85:gamma=0.68,avgblur=sizeX=6:sizeY=20,scale=%d:%d:flags=bilinear[lft_glow]; [s_rgt]crop=%d:%d:%d:0,scale=10:100:flags=fast_bilinear,eq=contrast=1.75:brightness=-0.08:saturation=1.85:gamma=0.68,avgblur=sizeX=6:sizeY=20,scale=%d:%d:flags=bilinear[rgt_glow]; [lft_glow][fg_q][rgt_glow]hstack=inputs=3:shortest=1,setsar=1]",
                 crop_d, vh, bar_size, vh,
                 crop_d, vh, vw - crop_d, bar_size, vh
             )
