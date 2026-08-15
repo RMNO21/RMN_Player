@@ -785,26 +785,62 @@ function open_open_file_menu()
 		return
 	end
 
-	---@type Menu | nil
-	local menu
 	local directory
-	local active_file
-
-	if state.path == nil or is_protocol(state.path) then
-		directory = options.default_directory
-		active_file = nil
-	else
+	if state.path and not is_protocol(state.path) then
 		local serialized = serialize_path(state.path)
-		if serialized then
-			directory = serialized.dirname
-			active_file = serialized.path
-		end
+		if serialized then directory = serialized.dirname end
 	end
+	if not directory or directory == '' then
+		local home = os.getenv('USERPROFILE') or os.getenv('HOME') or '.'
+		directory = options.default_directory or (home .. '\\Downloads')
+	end
+	directory = directory:gsub('/', '\\')
 
-	if not directory then
-		msg.error('Couldn\'t serialize path "' .. state.path .. '".')
+	local is_windows = mp.get_property_native('platform') == 'windows' or package.config:sub(1,1) == '\\'
+
+	if is_windows then
+		local ps_script = string.format([=[
+Add-Type -AssemblyName System.Windows.Forms
+$dlg = New-Object System.Windows.Forms.OpenFileDialog
+$dlg.Title = 'Open Media File'
+$dlg.Filter = 'Media Files (*.mkv;*.mp4;*.avi;*.webm;*.mov;*.flv;*.wmv;*.ts;*.m4v;*.m2ts;*.mp3;*.flac;*.m4a;*.ogg;*.opus;*.wav;*.aac)|*.mkv;*.mp4;*.avi;*.webm;*.mov;*.flv;*.wmv;*.ts;*.m4v;*.m2ts;*.mp3;*.flac;*.m4a;*.ogg;*.opus;*.wav;*.aac|Video Files (*.mkv;*.mp4;*.avi;*.webm;*.mov;*.flv;*.wmv;*.ts;*.m4v;*.m2ts)|*.mkv;*.mp4;*.avi;*.webm;*.mov;*.flv;*.wmv;*.ts;*.m4v;*.m2ts|Audio Files (*.mp3;*.flac;*.m4a;*.ogg;*.opus;*.wav;*.aac)|*.mp3;*.flac;*.m4a;*.ogg;*.opus;*.wav;*.aac|All Files (*.*)|*.*'
+$dlg.FilterIndex = 1
+$dlg.RestoreDirectory = $true
+if (Test-Path '%s') { $dlg.InitialDirectory = '%s' }
+$res = $dlg.ShowDialog()
+if ($res -eq [System.Windows.Forms.DialogResult]::OK) {
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    [Console]::Out.Write($dlg.FileName)
+}
+]=], directory:gsub("'", "''"), directory:gsub("'", "''"))
+
+		mp.command_native_async({
+			name = 'subprocess',
+			playback_only = false,
+			capture_stdout = true,
+			args = {
+				'powershell',
+				'-NoProfile',
+				'-ExecutionPolicy', 'Bypass',
+				'-WindowStyle', 'Hidden',
+				'-Command',
+				ps_script,
+			},
+		}, function(success, result, error)
+			if success and result and result.stdout and result.stdout ~= '' then
+				local selected = result.stdout:gsub('^%s+', ''):gsub('%s+$', '')
+				if #selected > 0 then
+					local command = has_any_extension(selected, config.types.playlist) and 'loadlist' or 'loadfile'
+					mp.commandv(command, selected, 'replace')
+				end
+			end
+		end)
 		return
 	end
+
+	---@type Menu | nil
+	local menu
+	local active_file = state.path and serialize_path(state.path) and serialize_path(state.path).path or nil
 
 	-- Update active file in directory navigation menu
 	local function handle_file_loaded()

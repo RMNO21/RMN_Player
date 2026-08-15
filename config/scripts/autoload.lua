@@ -1,36 +1,6 @@
--- This script automatically loads playlist entries before and after the
--- currently played file. It does so by scanning the directory a file is
--- located in when starting playback. It sorts the directory entries
--- alphabetically, and adds entries before and after the current file to
--- the internal playlist. (It stops if it would add an already existing
--- playlist entry at the same position - this makes it "stable".)
--- Add at most 5000 * 2 files when starting a file (before + after).
-
---[[
-To configure this script use file autoload.conf in directory script-opts (the "script-opts"
-directory must be in the mpv configuration directory, typically ~/.config/mpv/).
-
-Option `ignore_patterns` is a comma-separated list of patterns (see lua.org/pil/20.2.html).
-Additionally to the standard lua patterns, you can also escape commas with `%`,
-for example, the option `bak%,x%,,another` will be resolved as patterns `bak,x,` and `another`.
-But it does not mean you need to escape all lua patterns twice,
-so the option `bak%%,%.mp4,` will be resolved as two patterns `bak%%` and `%.mp4`.
-
-Example configuration would be:
-
-disabled=no
-images=no
-videos=yes
-audio=yes
-additional_image_exts=list,of,ext
-additional_video_exts=list,of,ext
-additional_audio_exts=list,of,ext
-ignore_hidden=yes
-same_type=yes
-directory_mode=recursive
-ignore_patterns=^~,^bak-,%.bak$
-
---]]
+-- autoload.lua
+-- Automatically loads playlist entries before and after the currently played file.
+-- Enhanced with Smart TV Show Detection, Fuzzy Matching, and Chronological Episode Sorting.
 
 local MAX_ENTRIES = 5000
 local MAX_DIR_STACK = 20
@@ -49,6 +19,8 @@ local o = {
     additional_audio_exts = "",
     ignore_hidden = true,
     same_type = false,
+    same_show = true,
+    fuzzy_match = true,
     directory_mode = "auto",
     ignore_patterns = ""
 }
@@ -90,16 +62,13 @@ end
 
 local function Split(list)
     local set = {}
-
     local item_pos = 1
     local item = ""
 
     while item_pos <= #list do
         local pos1, pos2 = FindOrPastTheEnd(list, "%%*,", item_pos)
-
         local pattern_length = pos2 - pos1
         local is_comma_escaped = pattern_length % 2
-
         local pos_before_escape = pos1 - 1
         local item_escape_count = pattern_length - is_comma_escaped
 
@@ -116,10 +85,7 @@ local function Split(list)
     end
 
     set[item] = true
-
-    -- exclude empty items
     set[""] = nil
-
     return set
 end
 
@@ -159,7 +125,7 @@ local function validate_directory_mode()
     end
 end
 
-options.read_options(o, nil, function(list)
+options.read_options(o, "autoload", function(list)
     split_option_exts(list.additional_video_exts, list.additional_audio_exts,
                       list.additional_image_exts)
     if list.videos or list.additional_video_exts or
@@ -180,14 +146,6 @@ split_patterns()
 create_extensions()
 validate_directory_mode()
 
-local function add_files(files)
-    local oldcount = mp.get_property_number("playlist-count", 1)
-    for i = 1, #files do
-        mp.commandv("loadfile", files[i][1], "append")
-        mp.commandv("playlist-move", oldcount + i - 1, files[i][2])
-    end
-end
-
 local function get_extension(path)
     return path:match("%.([^%.]+)$") or "nomatch"
 end
@@ -201,23 +159,366 @@ local function is_ignored(file)
     return false
 end
 
--- alphanum sorting for humans in Lua
--- http://notebook.kulchenko.com/algorithms/alphanumeric-natural-sorting-for-humans-in-lua
+-- ==================== SMART MEDIA MATCHING ENGINE ====================
 
-local function alphanumsort(filenames)
-    local function padnum(n, d)
-        return #d > 0 and ("%03d%s%.12f"):format(#n, n, tonumber(d) / (10 ^ #d))
-            or ("%03d%s"):format(#n, n)
+local JUNK_WORDS = {
+    "720p", "1080p", "2160p", "4k", "uhd", "hd", "sd", "480p", "576p",
+    "web%-dl", "webrip", "web", "bluray", "blu%-ray", "bdrip", "brrip", "dvdrip", "dvd", "hdtv", "pdtv", "dsr",
+    "x264", "x265", "h264", "h265", "hevc", "avc", "xvid", "divx", "10bit", "8bit", "12bit", "hdr", "hdr10", "hdr10plus", "dv", "dolby", "vision",
+    "aac", "aac2%.0", "ac3", "eac3", "dts", "dts%-hd", "truehd", "atmos", "ddp5%.1", "dd5%.1", "6ch", "2ch",
+    "psa", "yify", "yts", "rarbg", "galaxyrg", "tgx", "ettv", "eztv", "flux", "ntb", "amzn", "nf", "hmax", "dsnp", "atvp",
+    "film2media", "valamovie", "4dooble", "farsi", "dubbed", "sub", "persian", "softsub", "multi", "multisub", "dual", "audio",
+    "repack", "proper", "rerip", "internal", "remastered", "unrated", "extended", "directors", "cut", "edition"
+}
+
+local ORDINALS = {
+    ["1st"] = "first",
+    ["2nd"] = "second",
+    ["3rd"] = "third",
+    ["4th"] = "fourth",
+    ["5th"] = "fifth",
+    ["6th"] = "sixth",
+    ["7th"] = "seventh",
+    ["8th"] = "eighth",
+    ["9th"] = "ninth",
+    ["10th"] = "tenth",
+}
+
+local function stem_word(w)
+    if not w or #w == 0 then return "" end
+    w = w:lower()
+
+    if ORDINALS[w] then w = ORDINALS[w] end
+
+    w = w:gsub("ie$", "i")
+    w = w:gsub("y$", "i")
+
+    if #w > 3 and w:sub(-1) == "s" and not w:match("ss$") then
+        w = w:sub(1, -2)
+        w = w:gsub("ie$", "i")
+        w = w:gsub("y$", "i")
     end
 
+    local collapsed = {}
+    local last_char = ""
+    for i = 1, #w do
+        local c = w:sub(i, i)
+        if c ~= last_char or not c:match("[a-z]") then
+            table.insert(collapsed, c)
+            last_char = c
+        end
+    end
+    return table.concat(collapsed)
+end
+
+local function normalize_title(str)
+    if not str then return "", {}, {} end
+    str = str:lower()
+
+    str = str:gsub("&", " and ")
+    str = str:gsub("@", " at ")
+
+    str = str:gsub("^%b[]", " ")
+    str = str:gsub("^%b()", " ")
+    str = str:gsub("^%b{}", " ")
+
+    str = str:gsub("[%._%-%+/%|\\]", " ")
+    str = str:gsub("['\"`]", "")
+
+    for _, kw in ipairs(JUNK_WORDS) do
+        str = str:gsub("%f[%a%d]" .. kw .. "%f[%A%d]", " ")
+    end
+
+    str = str:gsub("%f[%d]19%d%d%f[%D]", " ")
+    str = str:gsub("%f[%d]20%d%d%f[%D]", " ")
+
+    str = str:gsub("[^%w%s]", " ")
+    str = str:gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+
+    str = str:gsub("^the%s+", "")
+    str = str:gsub("^a%s+", "")
+    str = str:gsub("^an%s+", "")
+
+    local tokens = {}
+    local stemmed_tokens = {}
+    for word in str:gmatch("%S+") do
+        if #word > 0 then
+            table.insert(tokens, word)
+            local stemmed = stem_word(word)
+            if #stemmed > 0 then
+                table.insert(stemmed_tokens, stemmed)
+            end
+        end
+    end
+
+    return str, tokens, stemmed_tokens
+end
+
+local function parse_media(filename)
+    if not filename or filename == "" then return nil end
+    local name = filename:match("([^/\\]+)$") or filename
+    local ext = name:match("%.([^%.]+)$")
+    local name_no_ext = (ext and #ext <= 5) and name:sub(1, -(#ext + 2)) or name
+
+    local season, episode, ep_end
+    local show_raw = ""
+    local is_episode = false
+    local is_multipart = false
+    local part_num = nil
+
+    -- Pure number filename like "01.mkv", "02.mp4"
+    if name_no_ext:match("^%d+$") then
+        return {
+            filename = name,
+            is_episode = true,
+            is_multipart = false,
+            season = 1,
+            episode = tonumber(name_no_ext),
+            part = 0,
+            raw_show = "",
+            clean_title = "",
+            tokens = {},
+            stemmed_tokens = {},
+        }
+    end
+
+    -- 1. Standard S01E05 or S01E05-E06 or S01.E05 or S01_E05
+    local s_pos, e_pos, s_num, e_num, e_num_end = name_no_ext:lower():find("[%.%s_%-]s(%d+)[%.%s_%-]?e(%d+)[%-%s_%.e]*(%d*)")
+    if s_pos then
+        show_raw = name_no_ext:sub(1, s_pos - 1)
+        season = tonumber(s_num)
+        episode = tonumber(e_num)
+        ep_end = tonumber(e_num_end)
+        is_episode = true
+    end
+
+    -- 2. 1x05 or 01x05 format
+    if not is_episode then
+        s_pos, e_pos, s_num, e_num = name_no_ext:lower():find("[%.%s_%-](%d%d?)x(%d%d+)")
+        if s_pos then
+            show_raw = name_no_ext:sub(1, s_pos - 1)
+            season = tonumber(s_num)
+            episode = tonumber(e_num)
+            is_episode = true
+        end
+    end
+
+    -- 3. Season 1 Episode 5 / Season 01
+    if not is_episode then
+        s_pos, e_pos, s_num, e_num = name_no_ext:lower():find("[%.%s_%-]season[%.%s_%-]*(%d+)[%.%s_%-]*episode[%.%s_%-]*(%d+)")
+        if s_pos then
+            show_raw = name_no_ext:sub(1, s_pos - 1)
+            season = tonumber(s_num)
+            episode = tonumber(e_num)
+            is_episode = true
+        else
+            s_pos, e_pos, s_num = name_no_ext:lower():find("[%.%s_%-]season[%.%s_%-]*(%d+)")
+            if s_pos then
+                show_raw = name_no_ext:sub(1, s_pos - 1)
+                season = tonumber(s_num)
+                local ep_match = name_no_ext:sub(e_pos + 1):lower():match("^[%.%s_%-]*[ep]*[%.%s_%-]*(%d+)")
+                if ep_match then episode = tonumber(ep_match) end
+                is_episode = true
+            end
+        end
+    end
+
+    -- 4. EP05 or Ep. 05 or Episode 05 (without explicit Season -> default Season 1)
+    if not is_episode then
+        s_pos, e_pos, e_num = name_no_ext:lower():find("[%.%s_%-]ep?i?s?o?d?e?[%.%s_%-]*(%d%d+)")
+        if s_pos then
+            local pre = name_no_ext:sub(1, s_pos - 1)
+            if not pre:lower():match("1080$") and not pre:lower():match("720$") and not pre:lower():match("2160$") then
+                show_raw = pre
+                season = 1
+                episode = tonumber(e_num)
+                is_episode = true
+            end
+        end
+    end
+
+    -- 5. Anime style: Show Name - 05 or Show Name - 05 (1080p)
+    if not is_episode then
+        local pre, ep_str = name_no_ext:match("^(.-)%s+%-%s+(%d%d?%d?)%s*")
+        if pre and ep_str and not pre:lower():match("part$") and not pre:lower():match("cd$") and not pre:lower():match("disc$") then
+            show_raw = pre
+            season = 1
+            episode = tonumber(ep_str)
+            is_episode = true
+        end
+    end
+
+    -- 6. Multi-part movie: Part 1, CD1, Disc 1
+    local p_pos, _, p_num = name_no_ext:lower():find("[%.%s_%-](?:part|cd|disc)[%.%s_%-]*(%d+)")
+    if p_pos then
+        show_raw = name_no_ext:sub(1, p_pos - 1)
+        part_num = tonumber(p_num)
+        is_multipart = true
+    end
+
+    if not is_episode and not is_multipart then
+        local y_pos = name_no_ext:find("[%s%.%-_%(]%d%d%d%d[%s%.%-_%)]")
+        if y_pos then
+            show_raw = name_no_ext:sub(1, y_pos - 1)
+        else
+            show_raw = name_no_ext
+        end
+    end
+
+    local clean_title, tokens, stemmed_tokens = normalize_title(show_raw)
+
+    return {
+        filename = name,
+        is_episode = is_episode,
+        is_multipart = is_multipart,
+        season = season or 0,
+        episode = episode or 0,
+        part = part_num or 0,
+        raw_show = show_raw,
+        clean_title = clean_title,
+        tokens = tokens,
+        stemmed_tokens = stemmed_tokens,
+    }
+end
+
+local function levenshtein(s1, s2)
+    local l1, l2 = #s1, #s2
+    if l1 == 0 then return l2 end
+    if l2 == 0 then return l1 end
+
+    local d = {}
+    for i = 0, l1 do d[i] = {[0] = i} end
+    for j = 0, l2 do d[0][j] = j end
+
+    for i = 1, l1 do
+        for j = 1, l2 do
+            local cost = (s1:sub(i, i) == s2:sub(j, j)) and 0 or 1
+            d[i][j] = math.min(
+                d[i-1][j] + 1,
+                d[i][j-1] + 1,
+                d[i-1][j-1] + cost
+            )
+        end
+    end
+    return d[l1][l2]
+end
+
+local function string_similarity(s1, s2)
+    if s1 == s2 then return 1.0 end
+    local max_len = math.max(#s1, #s2)
+    if max_len == 0 then return 1.0 end
+    local dist = levenshtein(s1, s2)
+    return 1.0 - (dist / max_len)
+end
+
+local function is_same_show(m1, m2)
+    if not m1 or not m2 then return false end
+
+    -- Both are numbered files without show names (e.g. 01.mkv and 02.mkv in the same folder)
+    if m1.is_episode and m2.is_episode and #m1.clean_title == 0 and #m2.clean_title == 0 then
+        return true
+    end
+
+    -- If one is an episode and one is clearly a standalone movie, do not match
+    if m1.is_episode ~= m2.is_episode and not m1.is_multipart and not m2.is_multipart then
+        return false
+    end
+
+    -- If both are multi-part movies, match on title
+    if m1.is_multipart and m2.is_multipart then
+        return m1.clean_title == m2.clean_title or string_similarity(m1.clean_title, m2.clean_title) >= 0.85
+    end
+
+    -- If both are standalone (neither is episode nor multipart), only match if same clean title
+    if not m1.is_episode and not m2.is_episode then
+        return m1.clean_title == m2.clean_title and #m1.clean_title > 0
+    end
+
+    -- Both are TV Show episodes:
+    if m1.clean_title == m2.clean_title and #m1.clean_title > 0 then
+        return true
+    end
+
+    local st1 = table.concat(m1.stemmed_tokens, " ")
+    local st2 = table.concat(m2.stemmed_tokens, " ")
+    if st1 == st2 and #st1 > 0 then
+        return true
+    end
+
+    if not o.fuzzy_match then return false end
+
+    -- Subset / prefix containment (e.g. "Georgie & Mandy" vs "Georgie & Mandy's First Marriage")
+    local shorter, longer
+    if #m1.stemmed_tokens <= #m2.stemmed_tokens then
+        shorter = m1.stemmed_tokens
+        longer = m2.stemmed_tokens
+    else
+        shorter = m2.stemmed_tokens
+        longer = m1.stemmed_tokens
+    end
+
+    if #shorter >= 2 then
+        local match_count = 0
+        local last_idx = 0
+        for _, s_tok in ipairs(shorter) do
+            for j = last_idx + 1, #longer do
+                local l_tok = longer[j]
+                if s_tok == l_tok or string_similarity(s_tok, l_tok) >= 0.8 then
+                    match_count = match_count + 1
+                    last_idx = j
+                    break
+                end
+            end
+        end
+        if match_count == #shorter or (match_count >= 2 and match_count / #shorter >= 0.75) then
+            return true
+        end
+    end
+
+    -- Fuzzy similarity on stemmed strings
+    if #st1 >= 4 and #st2 >= 4 then
+        local sim = string_similarity(st1, st2)
+        if sim >= 0.75 then
+            return true
+        end
+    end
+
+    return false
+end
+
+-- ==================== SORTING & SCANNING ====================
+
+local function padnum(n, d)
+    return #d > 0 and ("%03d%s%.12f"):format(#n, n, tonumber(d) / (10 ^ #d))
+        or ("%03d%s"):format(#n, n)
+end
+
+local function media_sort(filenames)
     local tuples = {}
     for i, f in ipairs(filenames) do
-        tuples[i] = {f:lower():gsub("0*(%d+)%.?(%d*)", padnum), f}
+        local m = parse_media(f)
+        local key
+        if m and (m.season > 0 or m.episode > 0 or m.part > 0) then
+            key = string.format("s%04de%04dp%04d", m.season, m.episode, m.part)
+        else
+            key = f:lower():gsub("0*(%d+)%.?(%d*)", padnum)
+        end
+        tuples[i] = {key = key, filename = f, season = m and m.season or 0, episode = m and m.episode or 0}
     end
+
     table.sort(tuples, function(a, b)
-        return a[1] == b[1] and #b[2] < #a[2] or a[1] < b[1]
+        if a.season ~= b.season and (a.season > 0 and b.season > 0) then
+            return a.season < b.season
+        end
+        if a.episode ~= b.episode and (a.episode > 0 and b.episode > 0) then
+            return a.episode < b.episode
+        end
+        return a.key < b.key
     end)
-    for i, tuple in ipairs(tuples) do filenames[i] = tuple[2] end
+
+    for i, tuple in ipairs(tuples) do
+        filenames[i] = tuple.filename
+    end
     return filenames
 end
 
@@ -225,7 +526,7 @@ local autoloaded
 local added_entries = {}
 local autoloaded_dir
 
-local function scan_dir(path, current_file, dir_mode, separator, dir_depth, total_files, extensions)
+local function scan_dir(path, current_file, current_media, dir_mode, separator, dir_depth, total_files, extensions)
     if dir_depth == MAX_DIR_STACK then
         return
     end
@@ -243,9 +544,9 @@ local function scan_dir(path, current_file, dir_mode, separator, dir_depth, tota
     end
 
     filter(files, function(v)
+        local full_path = prefix .. v
         -- Always accept current file
-        local current = prefix .. v == current_file
-        if current then
+        if full_path == current_file then
             return true
         end
         if o.ignore_hidden and v:match("^%.") then
@@ -256,13 +557,27 @@ local function scan_dir(path, current_file, dir_mode, separator, dir_depth, tota
         end
 
         local ext = get_extension(v)
-        return ext and extensions[ext:lower()]
+        if not (ext and extensions[ext:lower()]) then
+            return false
+        end
+
+        -- Smart TV Show / Collection filtering
+        if o.same_show and current_media then
+            local cand_media = parse_media(v)
+            if not is_same_show(current_media, cand_media) then
+                return false
+            end
+        end
+
+        return true
     end)
+
     filter(dirs, function(d)
         return not (o.ignore_hidden and d:match("^%."))
     end)
-    alphanumsort(files)
-    alphanumsort(dirs)
+
+    media_sort(files)
+    media_sort(dirs)
 
     for i, file in ipairs(files) do
         files[i] = prefix .. file
@@ -278,7 +593,7 @@ local function scan_dir(path, current_file, dir_mode, separator, dir_depth, tota
     append(total_files, files)
     if dir_mode == "recursive" then
         for _, dir in ipairs(dirs) do
-            scan_dir(prefix .. dir .. separator, current_file, dir_mode,
+            scan_dir(prefix .. dir .. separator, current_file, current_media, dir_mode,
                      separator, dir_depth + 1, total_files, extensions)
         end
     else
@@ -286,6 +601,14 @@ local function scan_dir(path, current_file, dir_mode, separator, dir_depth, tota
             dirs[i] = prefix .. dir
         end
         append(total_files, dirs)
+    end
+end
+
+local function add_files(files)
+    local oldcount = mp.get_property_number("playlist-count", 1)
+    for i = 1, #files do
+        mp.commandv("loadfile", files[i][1], "append")
+        mp.commandv("playlist-move", oldcount + i - 1, files[i][2])
     end
 end
 
@@ -309,7 +632,7 @@ local function find_and_add_entries()
 
     local pl_count = mp.get_property_number("playlist-count", 1)
     local this_ext = get_extension(filename)
-    -- check if this is a manually made playlist
+
     if pl_count > 1 and autoloaded == nil then
         msg.debug("stopping: manually made playlist")
         return
@@ -338,11 +661,11 @@ local function find_and_add_entries()
 
     local pl = mp.get_property_native("playlist", {})
     local pl_current = mp.get_property_number("playlist-pos-1", 1)
-    msg.trace(("playlist-pos-1: %s, playlist: %s"):format(pl_current,
-        utils.to_string(pl)))
+
+    local current_media = parse_media(filename)
 
     local files = {}
-    scan_dir(autoloaded_dir, path,
+    scan_dir(autoloaded_dir, path, current_media,
              o.directory_mode or mp.get_property("directory-mode", "lazy"),
              mp.get_property_native("platform") == "windows" and "\\" or "/",
              0, files, extensions)
@@ -352,7 +675,7 @@ local function find_and_add_entries()
         return
     end
 
-    -- Find the current pl entry (dir+"/"+filename) in the sorted dir list
+    -- Find the current pl entry in the sorted dir list
     local current
     for i = 1, #files do
         if files[i] == path then
@@ -364,19 +687,14 @@ local function find_and_add_entries()
         msg.debug("current file not found in directory")
         return
     end
-    msg.trace("current file position in files: "..current)
 
-    -- treat already existing playlist entries, independent of how they got added
-    -- as if they got added by autoload
     for _, entry in ipairs(pl) do
         added_entries[entry.filename] = true
     end
-
-    -- stop initial file from being added twice
     added_entries[path] = true
 
     local append = {[-1] = {}, [1] = {}}
-    for direction = -1, 1, 2 do -- 2 iterations, with direction = -1 and +1
+    for direction = -1, 1, 2 do
         for i = 1, MAX_ENTRIES do
             local pos = current + i * direction
             local file = files[pos]
@@ -384,7 +702,6 @@ local function find_and_add_entries()
                 break
             end
 
-            -- skip files that are/were already in the playlist
             if not added_entries[file] then
                 if direction == -1 then
                     msg.verbose("Prepending " .. file)

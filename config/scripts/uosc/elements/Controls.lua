@@ -50,10 +50,9 @@ function Controls:init_options()
 		['items'] = 'command:list_alt:script-binding uosc/items?' .. t('Playlist/Files'),
 		prev = 'command:arrow_back_ios:script-binding uosc/prev?' .. t('Previous'),
 		next = 'command:arrow_forward_ios:script-binding uosc/next?' .. t('Next'),
-		first = 'command:first_page:script-binding uosc/first?' .. t('First'),
-		last = 'command:last_page:script-binding uosc/last?' .. t('Last'),
 		['loop-playlist'] = 'cycle:repeat:loop-playlist:no/inf!?' .. t('Loop playlist'),
 		['loop-file'] = 'cycle:repeat_one:loop-file:no/inf!?' .. t('Loop file'),
+		['loop'] = 'loop:repeat?' .. t('Loop (Off / Playlist / Episode)'),
 		shuffle = 'toggle:shuffle:shuffle?' .. t('Shuffle'),
 		autoload = 'toggle:hdr_auto:autoload@uosc?' .. t('Autoload'),
 		fullscreen = 'cycle:crop_free:fullscreen:no/yes=fullscreen_exit!?' .. t('Fullscreen'),
@@ -191,6 +190,38 @@ function Controls:init_options()
 				})
 				table_assign(control, {element = element, sizing = 'static', scale = 1, ratio = 1})
 			end
+		elseif kind == 'loop' then
+			local element = Button:new('control_' .. i, {
+				render_order = self.render_order,
+				icon = 'repeat',
+				anchor_id = 'controls',
+				tooltip = t('Loop: Off'),
+				on_click = function()
+					mp.command('script-message cycle-loop')
+				end,
+			})
+			local function update_loop_ui()
+				local lf = mp.get_property('loop-file', 'no')
+				local lp = mp.get_property('loop-playlist', 'no')
+				if lf == 'inf' or lf == 'yes' then
+					element.icon = 'repeat_one'
+					element.active = true
+					element.tooltip = t('Loop: Current Episode (One)')
+				elseif lp == 'inf' or lp == 'yes' or lp == 'force' then
+					element.icon = 'repeat'
+					element.active = true
+					element.tooltip = t('Loop: Playlist (All)')
+				else
+					element.icon = 'repeat'
+					element.active = false
+					element.tooltip = t('Loop: Off')
+				end
+				request_render()
+			end
+			element:observe_mp_property('loop-file', 'string', update_loop_ui)
+			element:observe_mp_property('loop-playlist', 'string', update_loop_ui)
+			update_loop_ui()
+			table_assign(control, {element = element, sizing = 'static', scale = 1, ratio = 1})
 		elseif kind == 'speed' then
 			if not Elements.speed then
 				local element = Speed:new({anchor_id = 'controls', render_order = self.render_order})
