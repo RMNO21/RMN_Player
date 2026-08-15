@@ -578,6 +578,7 @@ local function get_db_entry(key)
 end
 
 local function track_playback()
+    if mp.get_property_bool("seeking", false) then return end
     local raw_path = current_path or mp.get_property("path", "")
     if not raw_path or raw_path == "" then return end
 

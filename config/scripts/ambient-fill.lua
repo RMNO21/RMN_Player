@@ -1,7 +1,7 @@
 -- ambient-fill.lua: Dynamic Fullscreen Background Fill & Ambient Glow
 -- Modes: Normal (Off) -> Blurred Background -> Ambient Glow
 -- Automatically detects screen resolution via Win32 API and activates ONLY in Fullscreen mode.
--- Idempotent filter application: zero re-initializations on seek, 100% crash-proof bidirectional navigation.
+-- Dynamic Zero-Overhead Hardware Decoder Switching: Pure native auto-safe GPU decode by default.
 
 local mp = require("mp")
 local msg = require("mp.msg")
@@ -102,6 +102,7 @@ local function apply_filter()
         if last_applied_vf ~= "" then
             mp.set_property("vf", "")
             mp.set_property("video-aspect-override", "-2")
+            mp.set_property("hwdec", "auto-safe")
             last_applied_vf = ""
         end
         return
@@ -120,6 +121,7 @@ local function apply_filter()
         if last_applied_vf ~= "" then
             mp.set_property("vf", "")
             mp.set_property("video-aspect-override", "-2")
+            mp.set_property("hwdec", "auto-safe")
             last_applied_vf = ""
         end
         return
@@ -177,6 +179,7 @@ local function apply_filter()
     end
 
     if vf_str ~= "" then
+        mp.set_property("hwdec", "auto-copy")
         mp.set_property("vf", vf_str)
         mp.set_property("video-aspect-override", "-1")
         last_applied_vf = vf_str
@@ -184,6 +187,7 @@ local function apply_filter()
     else
         mp.set_property("vf", "")
         mp.set_property("video-aspect-override", "-2")
+        mp.set_property("hwdec", "auto-safe")
         last_applied_vf = ""
     end
 end
