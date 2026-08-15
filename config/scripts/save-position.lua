@@ -10,6 +10,9 @@ local current_path = nil
 --- Save current position via mpv's native watch-later mechanism.
 --- No guards, no dedup — always saves if we have a valid position.
 local function save_position()
+    local is_seeking = mp.get_property_bool("seeking", false)
+    if is_seeking then return end
+
     local path = mp.get_property("path", "")
     if not path or path == "" then return end
 
