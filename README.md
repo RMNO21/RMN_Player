@@ -14,7 +14,7 @@ A high-performance custom media player for Windows with OLED-tuned rendering, in
 
 | Feature | Description |
 | :--- | :--- |
-| **Dynamic Ambient Fill & Blur** | Real-time color-adaptive ambient halo / blurred extension for letterbox and pillarbox bars. Single-axis stretching with zero crop and zero overhead when off. |
+| **Organic 2D Diffused Ambilight & Blur** | Real-time color-adaptive ambient halo / blurred extension for letterbox and pillarbox bars. 2D spatial diffusion on pure black canvas with zero crop and zero overhead when off. |
 | **Smart TV Show Autoloading** | Intelligently identifies same-show episodes across naming styles (`Georgie and Mandy`, `True Detective`) and sorts chronologically while isolating single movies. |
 | **Clean Title Sanitizer** | Displays clean video titles without website ads or release tags (e.g. `ValaMovie.Com`). |
 | **Unified 3-State Looper** | Single smart button and key shortcut cycling: `Off` → `Loop Playlist (All)` → `Loop Current Episode (One)`. |
@@ -50,7 +50,7 @@ All letter shortcuts are mapped for both **English (EN)** and **Persian (FA)** k
 | <kbd>Right Click</kbd> | Open context menu anywhere |
 | <kbd>Double Click</kbd> / <kbd>Enter</kbd> | Toggle Fullscreen |
 | <kbd>Space</kbd> | Play / Pause |
-| <kbd>→</kbd> / <kbd>←</kbd> | Seek $\pm 3$ seconds |
+| <kbd>→</kbd> / <kbd>←</kbd> | **Instant Non-Blocking Seek $\pm 3$ seconds** (0ms latency, zero freezing) |
 | <kbd>Shift</kbd> + <kbd>→</kbd> / <kbd>←</kbd> | Seek $\pm 30$ seconds |
 | <kbd>Ctrl</kbd> + <kbd>→</kbd> / <kbd>←</kbd> | Save position & go to Next / Previous episode |
 | <kbd>Mouse Wheel</kbd> / <kbd>↑</kbd> / <kbd>↓</kbd> | Volume $\pm 5\%$ |
