@@ -1,10 +1,7 @@
 -- ambient-fill.lua: Dynamic Fullscreen Background Fill & Ambient Glow
 -- Modes: Normal (Off) -> Blurred Background -> Ambient Glow
 -- Automatically detects screen resolution via Win32 API and activates ONLY in Fullscreen mode.
--- Smooth Exponential Directional Decay with Balanced Color Calibration:
--- 1. Mathematical Alpha Ramp (geq) eliminates all hard clipping lines at the monitor bezel.
--- 2. Balanced Midtone Sensitivity ensures bottom bar (ground, warm indoors, reds) glows actively.
--- 3. Accurate color reproduction prevents olive/green shifts in warm incandescent scenes.
+-- High-Performance Vibrant Ambilight: Wide horizontal ribbon diffusion, natural vertical decay, active bottom bar, and pure black retention.
 
 local mp = require("mp")
 local msg = require("mp.msg")
@@ -161,16 +158,17 @@ local function apply_effect()
             scale_w, scale_h, target_w, target_h, overlay_coords
         )
     elseif mode_id == "ambient" then
-        -- Cinematic Ambilight Mode with Exponential Directional Falloff:
+        -- Vibrant Ambilight Mode:
         -- 1. Base is 100% pure #000000 black canvas.
-        -- 2. Edge depth 40px captures full scene atmosphere (warm interiors, red/wood tones, daylight ground).
-        -- 3. Pre-sampled to 64x8 with avgblur sizeX=35:sizeY=4 for seamless horizontal gradient blending.
-        -- 4. Mathematical alpha falloff (geq) dissolves glow into pure #000000 at the monitor bezel (zero hard clipping).
-        -- 5. Balanced contrast=1.35, brightness=0.0, saturation=1.85, gamma=0.88 guarantees active bottom bar and authentic colors.
-        local crop_d = 40
+        -- 2. Extended 36px sampling captures scene context (warm interiors, daylight ground, red/wood tones).
+        -- 3. scale=64:4 -> avgblur=sizeX=35:sizeY=2 -> scale=target_w:bar_size:flags=bilinear
+        --    Smooth horizontal ribbon diffusion + natural vertical gradient decay.
+        -- 4. Balanced eq=contrast=1.45:brightness=-0.04:saturation=1.9:gamma=0.82
+        --    Preserves pure black floor, activates rich bottom bar glow, and eliminates olive green shifts.
+        local crop_d = 36
         if is_letterbox then
             vf_str = string.format(
-                "lavfi=[split=3[fg][s_top][s_bot]; [fg]pad=%d:%d:0:%d:black[base]; [s_top]crop=%d:%d:0:0,scale=64:8:flags=fast_bilinear,eq=contrast=1.35:brightness=0.0:saturation=1.85:gamma=0.88,avgblur=sizeX=35:sizeY=4,scale=%d:%d:flags=bilinear,geq=lum='p(X,Y)*pow(Y/H,1.3)':cb='(p(X,Y)-128)*pow(Y/H,1.3)+128':cr='(p(X,Y)-128)*pow(Y/H,1.3)+128'[top_glow]; [s_bot]crop=%d:%d:0:%d,scale=64:8:flags=fast_bilinear,eq=contrast=1.35:brightness=0.0:saturation=1.85:gamma=0.88,avgblur=sizeX=35:sizeY=4,scale=%d:%d:flags=bilinear,geq=lum='p(X,Y)*pow((H-Y)/H,1.3)':cb='(p(X,Y)-128)*pow((H-Y)/H,1.3)+128':cr='(p(X,Y)-128)*pow((H-Y)/H,1.3)+128'[bot_glow]; [base][top_glow]overlay=0:0:eof_action=pass:repeatlast=0[b1]; [b1][bot_glow]overlay=0:%d:eof_action=pass:repeatlast=0,setsar=1]",
+                "lavfi=[split=3[fg][s_top][s_bot]; [fg]pad=%d:%d:0:%d:black[base]; [s_top]crop=%d:%d:0:0,scale=64:4:flags=fast_bilinear,eq=contrast=1.45:brightness=-0.04:saturation=1.9:gamma=0.82,avgblur=sizeX=35:sizeY=2,scale=%d:%d:flags=bilinear[top_glow]; [s_bot]crop=%d:%d:0:%d,scale=64:4:flags=fast_bilinear,eq=contrast=1.45:brightness=-0.04:saturation=1.9:gamma=0.82,avgblur=sizeX=35:sizeY=2,scale=%d:%d:flags=bilinear[bot_glow]; [base][top_glow]overlay=0:0:eof_action=pass:repeatlast=0[b1]; [b1][bot_glow]overlay=0:%d:eof_action=pass:repeatlast=0,setsar=1]",
                 target_w, target_h, bar_size,
                 vw, crop_d, vw, bar_size,
                 vw, crop_d, vh - crop_d, vw, bar_size,
@@ -178,7 +176,7 @@ local function apply_effect()
             )
         else
             vf_str = string.format(
-                "lavfi=[split=3[fg][s_lft][s_rgt]; [fg]pad=%d:%d:%d:0:black[base]; [s_lft]crop=%d:%d:0:0,scale=8:64:flags=fast_bilinear,eq=contrast=1.35:brightness=0.0:saturation=1.85:gamma=0.88,avgblur=sizeX=4:sizeY=35,scale=%d:%d:flags=bilinear,geq=lum='p(X,Y)*pow(X/W,1.3)':cb='(p(X,Y)-128)*pow(X/W,1.3)+128':cr='(p(X,Y)-128)*pow(X/W,1.3)+128'[lft_glow]; [s_rgt]crop=%d:%d:%d:0,scale=8:64:flags=fast_bilinear,eq=contrast=1.35:brightness=0.0:saturation=1.85:gamma=0.88,avgblur=sizeX=4:sizeY=35,scale=%d:%d:flags=bilinear,geq=lum='p(X,Y)*pow((W-X)/W,1.3)':cb='(p(X,Y)-128)*pow((W-X)/W,1.3)+128':cr='(p(X,Y)-128)*pow((W-X)/W,1.3)+128'[rgt_glow]; [base][lft_glow]overlay=0:0:eof_action=pass:repeatlast=0[b1]; [b1][rgt_glow]overlay=%d:0:eof_action=pass:repeatlast=0,setsar=1]",
+                "lavfi=[split=3[fg][s_lft][s_rgt]; [fg]pad=%d:%d:%d:0:black[base]; [s_lft]crop=%d:%d:0:0,scale=4:64:flags=fast_bilinear,eq=contrast=1.45:brightness=-0.04:saturation=1.9:gamma=0.82,avgblur=sizeX=2:sizeY=35,scale=%d:%d:flags=bilinear[lft_glow]; [s_rgt]crop=%d:%d:%d:0,scale=4:64:flags=fast_bilinear,eq=contrast=1.45:brightness=-0.04:saturation=1.9:gamma=0.82,avgblur=sizeX=2:sizeY=35,scale=%d:%d:flags=bilinear[rgt_glow]; [base][lft_glow]overlay=0:0:eof_action=pass:repeatlast=0[b1]; [b1][rgt_glow]overlay=%d:0:eof_action=pass:repeatlast=0,setsar=1]",
                 target_w, target_h, bar_size,
                 crop_d, vh, bar_size, vh,
                 crop_d, vh, vw - crop_d, bar_size, vh,
@@ -239,4 +237,4 @@ mp.register_event("file-loaded", on_file_loaded)
 mp.observe_property("fullscreen", "bool", on_fullscreen_change)
 mp.observe_property("video-params", "native", apply_effect)
 
-msg.info("ambient-fill.lua initialized (exponential directional falloff Ambilight on true black canvas).")
+msg.info("ambient-fill.lua initialized (robust vibrant Ambilight on true black canvas).")
