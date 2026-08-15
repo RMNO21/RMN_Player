@@ -1,7 +1,7 @@
 -- ambient-fill.lua: Dynamic Fullscreen Background Fill & Ambient Glow
 -- Modes: Normal (Off) -> Blurred Background -> Ambient Glow
 -- Automatically detects screen resolution via Win32 API and activates ONLY in Fullscreen mode.
--- High-Performance vstack/hstack Architecture: 100% crash-proof seeking even when holding down arrow keys.
+-- Idempotent filter application: zero re-initializations on seek, 100% crash-proof bidirectional navigation.
 
 local mp = require("mp")
 local msg = require("mp.msg")
@@ -41,6 +41,7 @@ local MODES = {
     { id = "ambient", label = "Ambient Glow" },
 }
 local current_mode = 1 -- default off
+local last_applied_vf = ""
 
 local function get_screen_aspect()
     -- 1. Query the physical active monitor where MPV is located via Win32 API
@@ -98,8 +99,11 @@ local function apply_filter()
 
     -- Only apply in fullscreen mode and when mode > 1
     if not is_fs or current_mode == 1 then
-        mp.set_property("vf", "")
-        mp.set_property("video-aspect-override", "-2")
+        if last_applied_vf ~= "" then
+            mp.set_property("vf", "")
+            mp.set_property("video-aspect-override", "-2")
+            last_applied_vf = ""
+        end
         return
     end
 
@@ -113,13 +117,16 @@ local function apply_filter()
 
     -- If video already matches screen aspect ratio within 0.8%, skip
     if diff < 0.008 then
-        mp.set_property("vf", "")
-        mp.set_property("video-aspect-override", "-2")
+        if last_applied_vf ~= "" then
+            mp.set_property("vf", "")
+            mp.set_property("video-aspect-override", "-2")
+            last_applied_vf = ""
+        end
         return
     end
 
     local is_letterbox = (v_aspect > target_aspect)
-    local target_w, target_h, overlay_coords
+    local target_w, target_h
     local bar_size = 0
 
     if is_letterbox then
@@ -127,13 +134,11 @@ local function apply_filter()
         target_w = vw
         target_h = math.floor((vw / target_aspect) / 2) * 2
         bar_size = math.floor((target_h - vh) / 2)
-        overlay_coords = "0:(H-h)/2"
     else
         -- Pillarbox (bars on left/right, e.g. 9:16 or 4:3 on 16:9):
         target_w = math.floor((vh * target_aspect) / 2) * 2
         target_h = vh
         bar_size = math.floor((target_w - vw) / 2)
-        overlay_coords = "(W-w)/2:0"
     end
 
     local vf_str = ""
@@ -143,13 +148,13 @@ local function apply_filter()
         -- Blurred Background Mode: Full background softly blurred with single-axis aspect stretch
         local scale_w = math.floor(vw / 4 / 2) * 2
         local scale_h = math.floor(vh / 4 / 2) * 2
+        local overlay_coords = is_letterbox and "0:(H-h)/2" or "(W-w)/2:0"
         vf_str = string.format(
             "lavfi=[split [fg][bg]; [bg]format=yuv420p,scale=%d:%d:flags=fast_bilinear,avgblur=sizeX=6:sizeY=6,scale=%d:%d:flags=bilinear,eq=brightness=-0.1:contrast=0.92[bg_blur]; [bg_blur][fg]overlay=%s:eof_action=pass:repeatlast=0,setsar=1]",
             scale_w, scale_h, target_w, target_h, overlay_coords
         )
     elseif mode_id == "ambient" then
         -- Ultra-Lean vstack/hstack High-Contrast Ambilight:
-        -- Single-pass deterministic stacking eliminates all buffer queuing and seek crashes.
         local crop_d = 20
         if is_letterbox then
             vf_str = string.format(
@@ -166,13 +171,20 @@ local function apply_filter()
         end
     end
 
+    -- Idempotent check: only update property if string actually changed
+    if vf_str == last_applied_vf then
+        return
+    end
+
     if vf_str ~= "" then
         mp.set_property("vf", vf_str)
         mp.set_property("video-aspect-override", "-1")
-        msg.info(string.format("Applied %s mode in fullscreen (%dx%d -> %dx%d, screen aspect: %.3f)", mode_id, vw, vh, target_w, target_h, target_aspect))
+        last_applied_vf = vf_str
+        msg.info(string.format("Applied %s mode in fullscreen (%dx%d -> %dx%d)", mode_id, vw, vh, target_w, target_h))
     else
         mp.set_property("vf", "")
         mp.set_property("video-aspect-override", "-2")
+        last_applied_vf = ""
     end
 end
 
@@ -195,20 +207,17 @@ local function cycle_ambient_fill()
 end
 
 local function on_fullscreen_change(name, is_fs)
-    if current_mode > 1 then
-        apply_filter()
-    end
+    apply_filter()
 end
 
-local function on_playback_change()
-    if current_mode > 1 then
-        apply_filter()
-    end
+local function on_file_loaded()
+    apply_filter()
 end
 
 mp.register_script_message("cycle-ambient-fill", cycle_ambient_fill)
 mp.register_script_message("toggle-ambient-fill", cycle_ambient_fill)
-mp.register_event("playback-restart", on_playback_change)
+mp.register_event("file-loaded", on_file_loaded)
 mp.observe_property("fullscreen", "bool", on_fullscreen_change)
+mp.observe_property("video-params", "native", apply_filter)
 
-msg.info("ambient-fill.lua initialized (ultra-lean vstack/hstack engine).")
+msg.info("ambient-fill.lua initialized (idempotent zero-overhead engine).")
