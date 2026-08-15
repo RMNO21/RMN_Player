@@ -1,6 +1,39 @@
 //!HOOK MAIN
 //!BIND HOOKED
-//!DESC Blurred Background Fill (Pure GPU Shader)
+//!SAVE BLUR_PASS1
+//!DESC Blurred Background Fill - Horizontal 2D Diffusion Pass
+//!WIDTH HOOKED.w / 4
+//!HEIGHT HOOKED.h / 4
+
+vec4 hook() {
+    vec2 pos = HOOKED_pos;
+    vec2 pt = HOOKED_pt;
+
+    float v_aspect = HOOKED_size.x / HOOKED_size.y;
+    float t_aspect = target_size.x / target_size.y;
+
+    if (abs(v_aspect - t_aspect) < 0.01) {
+        return HOOKED_tex(pos);
+    }
+
+    // High-density 9-tap bilinear Gaussian blur across entire frame
+    vec4 sum = vec4(0.0);
+    float weights[5] = float[](0.227027, 0.1945946, 0.1216216, 0.054054, 0.016216);
+    float offsets[5] = float[](0.0, 1.3846153846, 3.2307692308, 5.0769230769, 6.9230769231);
+
+    sum += HOOKED_tex(pos) * weights[0];
+    for (int i = 1; i < 5; i++) {
+        float off = offsets[i] * pt.x * 8.0;
+        sum += HOOKED_tex(vec2(clamp(pos.x + off, 0.0, 1.0), pos.y)) * weights[i];
+        sum += HOOKED_tex(vec2(clamp(pos.x - off, 0.0, 1.0), pos.y)) * weights[i];
+    }
+    return sum;
+}
+
+//!HOOK MAIN
+//!BIND HOOKED
+//!BIND BLUR_PASS1
+//!DESC Blurred Background Fill - Vertical Diffusion & Composite Pass
 
 vec4 hook() {
     vec2 pos = HOOKED_pos;
@@ -19,27 +52,27 @@ vec4 hook() {
         float h_frac = t_aspect / v_aspect;
         float bar = (1.0 - h_frac) * 0.5;
 
-        // Active video region:
+        // Inside active video: Return pristine untouched video
         if (pos.y >= bar && pos.y <= (1.0 - bar)) {
             float v_y = (pos.y - bar) / h_frac;
             return HOOKED_tex(vec2(pos.x, v_y));
         }
 
-        // Letterbox bars: Blurred background with subtle contrast & dimming
+        // Top or bottom bar: Vertical blur over BLUR_PASS1
         vec4 sum = vec4(0.0);
-        float total_w = 0.0;
-        float blur_r = 60.0 * pt.x;
+        float weights[5] = float[](0.227027, 0.1945946, 0.1216216, 0.054054, 0.016216);
+        float offsets[5] = float[](0.0, 1.3846153846, 3.2307692308, 5.0769230769, 6.9230769231);
 
-        for (int i = -8; i <= 8; i++) {
-            float offset = float(i) * (blur_r / 8.0);
-            float weight = exp(-0.5 * (float(i * i) / 8.0));
-            vec2 sample_pos = vec2(clamp(pos.x + offset, 0.0, 1.0), clamp(pos.y, 0.0, 1.0));
-            sum += HOOKED_tex(sample_pos) * weight;
-            total_w += weight;
+        sum += BLUR_PASS1_tex(pos) * weights[0];
+        for (int i = 1; i < 5; i++) {
+            float off = offsets[i] * pt.y * 10.0;
+            sum += BLUR_PASS1_tex(vec2(pos.x, clamp(pos.y + off, 0.0, 1.0))) * weights[i];
+            sum += BLUR_PASS1_tex(vec2(pos.x, clamp(pos.y - off, 0.0, 1.0))) * weights[i];
         }
 
-        vec4 col = sum / total_w;
-        col.rgb = col.rgb * 0.75; // Dim slightly so video pops
+        // Slight darkening (0.75x) so foreground video pops
+        vec4 col = sum;
+        col.rgb = col.rgb * 0.72;
         return col;
     } else {
         float w_frac = v_aspect / t_aspect;
@@ -51,19 +84,18 @@ vec4 hook() {
         }
 
         vec4 sum = vec4(0.0);
-        float total_w = 0.0;
-        float blur_r = 60.0 * pt.y;
+        float weights[5] = float[](0.227027, 0.1945946, 0.1216216, 0.054054, 0.016216);
+        float offsets[5] = float[](0.0, 1.3846153846, 3.2307692308, 5.0769230769, 6.9230769231);
 
-        for (int i = -8; i <= 8; i++) {
-            float offset = float(i) * (blur_r / 8.0);
-            float weight = exp(-0.5 * (float(i * i) / 8.0));
-            vec2 sample_pos = vec2(clamp(pos.x, 0.0, 1.0), clamp(pos.y + offset, 0.0, 1.0));
-            sum += HOOKED_tex(sample_pos) * weight;
-            total_w += weight;
+        sum += BLUR_PASS1_tex(pos) * weights[0];
+        for (int i = 1; i < 5; i++) {
+            float off = offsets[i] * pt.x * 10.0;
+            sum += BLUR_PASS1_tex(vec2(clamp(pos.x + off, 0.0, 1.0), pos.y)) * weights[i];
+            sum += BLUR_PASS1_tex(vec2(clamp(pos.x - off, 0.0, 1.0), pos.y)) * weights[i];
         }
 
-        vec4 col = sum / total_w;
-        col.rgb = col.rgb * 0.75;
+        vec4 col = sum;
+        col.rgb = col.rgb * 0.72;
         return col;
     }
 }
