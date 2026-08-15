@@ -1,0 +1,120 @@
+//!HOOK MAIN
+//!BIND HOOKED
+//!DESC Luminous High-Contrast Ambilight (Pure GPU Shader)
+
+// Uniforms provided by MPV:
+// HOOKED_pos: [0, 1] normalized texture coordinate
+// HOOKED_pt: 1.0 / HOOKED_size
+// target_size: render target resolution
+
+vec4 hook() {
+    vec2 pos = HOOKED_pos;
+    vec2 pt = HOOKED_pt;
+
+    // Aspect ratio calculation:
+    // Video aspect: HOOKED_size.x / HOOKED_size.y
+    // Target aspect: target_size.x / target_size.y
+    float v_aspect = HOOKED_size.x / HOOKED_size.y;
+    float t_aspect = target_size.x / target_size.y;
+
+    // If aspects match (diff < 1%), render original untouched
+    if (abs(v_aspect - t_aspect) < 0.01) {
+        return HOOKED_tex(pos);
+    }
+
+    bool is_letterbox = (v_aspect > t_aspect);
+
+    if (is_letterbox) {
+        // Bars on Top & Bottom (e.g. 16:9 on 16:10 display)
+        float h_frac = t_aspect / v_aspect; // e.g. (16/10) / (16/9) = 0.9
+        float bar = (1.0 - h_frac) * 0.5;   // e.g. 0.05 (5% top, 5% bottom)
+
+        // Inside active video region:
+        if (pos.y >= bar && pos.y <= (1.0 - bar)) {
+            float v_y = (pos.y - bar) / h_frac;
+            return HOOKED_tex(vec2(pos.x, v_y));
+        }
+
+        // Top or Bottom Bar Ambient Glow:
+        bool is_top = (pos.y < bar);
+        float edge_y = is_top ? 0.008 : 0.992;
+        float dist_from_video = is_top ? (bar - pos.y) / bar : (pos.y - (1.0 - bar)) / bar;
+
+        // 13-tap wide 2D Gaussian bloom on the edge
+        vec4 sum = vec4(0.0);
+        float total_w = 0.0;
+        float blur_radius = 45.0 * pt.x;
+
+        for (int i = -6; i <= 6; i++) {
+            float offset = float(i) * (blur_radius / 6.0);
+            float weight = exp(-0.5 * (float(i * i) / 5.0));
+            vec2 sample_pos = vec2(clamp(pos.x + offset, 0.0, 1.0), edge_y);
+            sum += HOOKED_tex(sample_pos) * weight;
+            total_w += weight;
+        }
+
+        vec4 glow = sum / total_w;
+
+        // High-Contrast Cinematic Color Calibration:
+        // 1. Natural exponential falloff towards outer monitor bezel
+        float falloff = clamp(1.0 - pow(dist_from_video, 1.3), 0.0, 1.0);
+
+        // 2. High-contrast curve with steep black floor (crush milky blacks)
+        vec3 col = glow.rgb;
+        col = clamp((col - 0.05) * 1.6, 0.0, 1.0);
+        col = pow(col, vec3(1.35));
+
+        // 3. Saturation boost (1.8x)
+        float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));
+        col = clamp(mix(vec3(luma), col, 1.8), 0.0, 1.0);
+
+        // 4. Combine with falloff
+        col = col * falloff;
+
+        return vec4(col, 1.0);
+    } else {
+        // Bars on Left & Right (e.g. 4:3 or 9:16 on 16:9 display)
+        float w_frac = v_aspect / t_aspect;
+        float bar = (1.0 - w_frac) * 0.5;
+
+        // Inside active video region:
+        if (pos.x >= bar && pos.x <= (1.0 - bar)) {
+            float v_x = (pos.x - bar) / w_frac;
+            return HOOKED_tex(vec2(v_x, pos.y));
+        }
+
+        // Left or Right Bar Ambient Glow:
+        bool is_left = (pos.x < bar);
+        float edge_x = is_left ? 0.008 : 0.992;
+        float dist_from_video = is_left ? (bar - pos.x) / bar : (pos.x - (1.0 - bar)) / bar;
+
+        // 13-tap wide 2D Gaussian bloom on the edge
+        vec4 sum = vec4(0.0);
+        float total_w = 0.0;
+        float blur_radius = 45.0 * pt.y;
+
+        for (int i = -6; i <= 6; i++) {
+            float offset = float(i) * (blur_radius / 6.0);
+            float weight = exp(-0.5 * (float(i * i) / 5.0));
+            vec2 sample_pos = vec2(edge_x, clamp(pos.y + offset, 0.0, 1.0));
+            sum += HOOKED_tex(sample_pos) * weight;
+            total_w += weight;
+        }
+
+        vec4 glow = sum / total_w;
+
+        // High-Contrast Cinematic Color Calibration:
+        float falloff = clamp(1.0 - pow(dist_from_video, 1.3), 0.0, 1.0);
+
+        vec3 col = glow.rgb;
+        col = clamp((col - 0.05) * 1.6, 0.0, 1.0);
+        col = pow(col, vec3(1.35));
+
+        float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));
+        col = clamp(mix(vec3(luma), col, 1.8), 0.0, 1.0);
+
+        col = col * falloff;
+
+        return vec4(col, 1.0);
+    }
+}
