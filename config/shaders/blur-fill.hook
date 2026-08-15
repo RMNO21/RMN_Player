@@ -1,0 +1,69 @@
+//!HOOK MAIN
+//!BIND HOOKED
+//!DESC Blurred Background Fill (Pure GPU Shader)
+
+vec4 hook() {
+    vec2 pos = HOOKED_pos;
+    vec2 pt = HOOKED_pt;
+
+    float v_aspect = HOOKED_size.x / HOOKED_size.y;
+    float t_aspect = target_size.x / target_size.y;
+
+    if (abs(v_aspect - t_aspect) < 0.01) {
+        return HOOKED_tex(pos);
+    }
+
+    bool is_letterbox = (v_aspect > t_aspect);
+
+    if (is_letterbox) {
+        float h_frac = t_aspect / v_aspect;
+        float bar = (1.0 - h_frac) * 0.5;
+
+        // Active video region:
+        if (pos.y >= bar && pos.y <= (1.0 - bar)) {
+            float v_y = (pos.y - bar) / h_frac;
+            return HOOKED_tex(vec2(pos.x, v_y));
+        }
+
+        // Letterbox bars: Blurred background with subtle contrast & dimming
+        vec4 sum = vec4(0.0);
+        float total_w = 0.0;
+        float blur_r = 60.0 * pt.x;
+
+        for (int i = -8; i <= 8; i++) {
+            float offset = float(i) * (blur_r / 8.0);
+            float weight = exp(-0.5 * (float(i * i) / 8.0));
+            vec2 sample_pos = vec2(clamp(pos.x + offset, 0.0, 1.0), clamp(pos.y, 0.0, 1.0));
+            sum += HOOKED_tex(sample_pos) * weight;
+            total_w += weight;
+        }
+
+        vec4 col = sum / total_w;
+        col.rgb = col.rgb * 0.75; // Dim slightly so video pops
+        return col;
+    } else {
+        float w_frac = v_aspect / t_aspect;
+        float bar = (1.0 - w_frac) * 0.5;
+
+        if (pos.x >= bar && pos.x <= (1.0 - bar)) {
+            float v_x = (pos.x - bar) / w_frac;
+            return HOOKED_tex(vec2(v_x, pos.y));
+        }
+
+        vec4 sum = vec4(0.0);
+        float total_w = 0.0;
+        float blur_r = 60.0 * pt.y;
+
+        for (int i = -8; i <= 8; i++) {
+            float offset = float(i) * (blur_r / 8.0);
+            float weight = exp(-0.5 * (float(i * i) / 8.0));
+            vec2 sample_pos = vec2(clamp(pos.x, 0.0, 1.0), clamp(pos.y + offset, 0.0, 1.0));
+            sum += HOOKED_tex(sample_pos) * weight;
+            total_w += weight;
+        }
+
+        vec4 col = sum / total_w;
+        col.rgb = col.rgb * 0.75;
+        return col;
+    }
+}
