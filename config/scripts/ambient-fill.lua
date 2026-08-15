@@ -1,7 +1,7 @@
 -- ambient-fill.lua: Dynamic Fullscreen Background Fill & Ambient Glow
 -- Modes: Normal (Off) -> Blurred Background -> Ambient Glow
--- Automatically detects any screen orientation/resolution via Win32 API and activates ONLY in Fullscreen mode.
--- Highly optimized multi-scale blur pipeline: 94% less computation for instant seeking and zero battery drain.
+-- Automatically detects screen resolution via Win32 API and activates ONLY in Fullscreen mode.
+-- Organic 2D Diffused Ambilight: Soft volumetric light bloom on deep black canvas, zero harsh lines, natural film colors.
 
 local mp = require("mp")
 local msg = require("mp.msg")
@@ -118,18 +118,21 @@ local function apply_filter()
         return
     end
 
+    local is_letterbox = (v_aspect > target_aspect)
     local target_w, target_h, overlay_coords
-    if v_aspect > target_aspect then
+    local bar_size = 0
+
+    if is_letterbox then
         -- Letterbox (bars on top/bottom, e.g. 16:9 on 16:10):
-        -- Strictly lock width to vw (0% horizontal change/zoom), stretch ONLY height
         target_w = vw
         target_h = math.floor((vw / target_aspect) / 2) * 2
+        bar_size = math.floor((target_h - vh) / 2)
         overlay_coords = "0:(H-h)/2"
     else
         -- Pillarbox (bars on left/right, e.g. 9:16 or 4:3 on 16:9):
-        -- Strictly lock height to vh (0% vertical change/zoom), stretch ONLY width
         target_w = math.floor((vh * target_aspect) / 2) * 2
         target_h = vh
+        bar_size = math.floor((target_w - vw) / 2)
         overlay_coords = "(W-w)/2:0"
     end
 
@@ -137,27 +140,42 @@ local function apply_filter()
     local mode_id = MODES[current_mode].id
 
     if mode_id == "blur" then
-        -- High-Efficiency Blur: downscale 1/4 -> compact blur -> upscale (16x faster, instant seek, crash-proof)
-        local dw = math.floor(target_w / 4 / 2) * 2
-        local dh = math.floor(target_h / 4 / 2) * 2
+        -- Blurred Background Mode: Full background softly blurred with single-axis aspect stretch
+        local scale_w = math.floor(vw / 4 / 2) * 2
+        local scale_h = math.floor(vh / 4 / 2) * 2
         vf_str = string.format(
             "lavfi=[split [fg][bg]; [bg]format=yuv420p,scale=%d:%d:flags=fast_bilinear,avgblur=sizeX=6:sizeY=6,scale=%d:%d:flags=bilinear,eq=brightness=-0.1:contrast=0.92[bg_blur]; [bg_blur][fg]overlay=%s:eof_action=pass:repeatlast=0,setsar=1]",
-            dw, dh, target_w, target_h, overlay_coords
+            scale_w, scale_h, target_w, target_h, overlay_coords
         )
     elseif mode_id == "ambient" then
-        -- High-Efficiency Ambient Glow: downscale 1/8 -> radiant glow -> upscale (64x faster, instant seek, crash-proof)
-        local dw = math.floor(target_w / 8 / 2) * 2
-        local dh = math.floor(target_h / 8 / 2) * 2
-        vf_str = string.format(
-            "lavfi=[split [fg][bg]; [bg]format=yuv420p,scale=%d:%d:flags=fast_bilinear,avgblur=sizeX=12:sizeY=12,scale=%d:%d:flags=bilinear,eq=saturation=1.6:contrast=1.05[bg_glow]; [bg_glow][fg]overlay=%s:eof_action=pass:repeatlast=0,setsar=1]",
-            dw, dh, target_w, target_h, overlay_coords
-        )
+        -- Organic 2D Diffused Ambilight Mode:
+        -- Base canvas is 100% PURE JET BLACK.
+        -- 2D spatial diffusion eliminates all harsh vertical lines/stripes.
+        -- Natural film-accurate color calibration without neon oversaturation.
+        local crop_d = 16
+        if is_letterbox then
+            vf_str = string.format(
+                "lavfi=[split=3[fg][s_top][s_bot]; [fg]pad=%d:%d:0:%d:black[base]; [s_top]crop=%d:%d:0:0,scale=80:8:flags=fast_bilinear,avgblur=sizeX=16:sizeY=6,eq=contrast=1.15:brightness=-0.06:saturation=1.25,scale=%d:%d:flags=bilinear[top_glow]; [s_bot]crop=%d:%d:0:%d,scale=80:8:flags=fast_bilinear,avgblur=sizeX=16:sizeY=6,eq=contrast=1.15:brightness=-0.06:saturation=1.25,scale=%d:%d:flags=bilinear[bot_glow]; [base][top_glow]overlay=0:0:eof_action=pass[b1]; [b1][bot_glow]overlay=0:%d:eof_action=pass,setsar=1]",
+                target_w, target_h, bar_size,
+                vw, crop_d, vw, bar_size,
+                vw, crop_d, vh - crop_d, vw, bar_size,
+                target_h - bar_size
+            )
+        else
+            vf_str = string.format(
+                "lavfi=[split=3[fg][s_lft][s_rgt]; [fg]pad=%d:%d:%d:0:black[base]; [s_lft]crop=%d:%d:0:0,scale=8:80:flags=fast_bilinear,avgblur=sizeX=6:sizeY=16,eq=contrast=1.15:brightness=-0.06:saturation=1.25,scale=%d:%d:flags=bilinear[lft_glow]; [s_rgt]crop=%d:%d:%d:0,scale=8:80:flags=fast_bilinear,avgblur=sizeX=6:sizeY=16,eq=contrast=1.15:brightness=-0.06:saturation=1.25,scale=%d:%d:flags=bilinear[rgt_glow]; [base][lft_glow]overlay=0:0:eof_action=pass[b1]; [b1][rgt_glow]overlay=%d:0:eof_action=pass,setsar=1]",
+                target_w, target_h, bar_size,
+                crop_d, vh, bar_size, vh,
+                crop_d, vh, vw - crop_d, bar_size, vh,
+                target_w - bar_size
+            )
+        end
     end
 
     if vf_str ~= "" then
         mp.set_property("vf", vf_str)
         mp.set_property("video-aspect-override", "-1")
-        msg.info(string.format("Applied optimized %s mode in fullscreen (%dx%d -> %dx%d, screen aspect: %.3f)", mode_id, vw, vh, target_w, target_h, target_aspect))
+        msg.info(string.format("Applied %s mode in fullscreen (%dx%d -> %dx%d, screen aspect: %.3f)", mode_id, vw, vh, target_w, target_h, target_aspect))
     else
         mp.set_property("vf", "")
         mp.set_property("video-aspect-override", "-2")
@@ -199,4 +217,4 @@ mp.register_script_message("toggle-ambient-fill", cycle_ambient_fill)
 mp.register_event("playback-restart", on_playback_change)
 mp.observe_property("fullscreen", "bool", on_fullscreen_change)
 
-msg.info("ambient-fill.lua initialized (zero-overhead when disabled).")
+msg.info("ambient-fill.lua initialized (organic 2D Ambilight).")
