@@ -137,19 +137,19 @@ local function apply_filter()
     local mode_id = MODES[current_mode].id
 
     if mode_id == "blur" then
-        -- High-Efficiency Blur: downscale 1/4 -> compact blur -> upscale (16x faster, instant seek)
+        -- High-Efficiency Blur: downscale 1/4 -> compact blur -> upscale (16x faster, instant seek, crash-proof)
         local dw = math.floor(target_w / 4 / 2) * 2
         local dh = math.floor(target_h / 4 / 2) * 2
         vf_str = string.format(
-            "lavfi=[split [fg][bg]; [bg]format=yuv420p,scale=%d:%d:flags=fast_bilinear,avgblur=sizeX=6:sizeY=6,scale=%d:%d:flags=bilinear,eq=brightness=-0.1:contrast=0.92[bg_blur]; [bg_blur][fg]overlay=%s,setsar=1]",
+            "lavfi=[split [fg][bg]; [bg]format=yuv420p,scale=%d:%d:flags=fast_bilinear,avgblur=sizeX=6:sizeY=6,scale=%d:%d:flags=bilinear,eq=brightness=-0.1:contrast=0.92[bg_blur]; [bg_blur][fg]overlay=%s:eof_action=pass:repeatlast=0,setsar=1]",
             dw, dh, target_w, target_h, overlay_coords
         )
     elseif mode_id == "ambient" then
-        -- High-Efficiency Ambient Glow: downscale 1/8 -> radiant glow -> upscale (64x faster, instant seek)
+        -- High-Efficiency Ambient Glow: downscale 1/8 -> radiant glow -> upscale (64x faster, instant seek, crash-proof)
         local dw = math.floor(target_w / 8 / 2) * 2
         local dh = math.floor(target_h / 8 / 2) * 2
         vf_str = string.format(
-            "lavfi=[split [fg][bg]; [bg]format=yuv420p,scale=%d:%d:flags=fast_bilinear,avgblur=sizeX=12:sizeY=12,scale=%d:%d:flags=bilinear,eq=saturation=1.6:contrast=1.05[bg_glow]; [bg_glow][fg]overlay=%s,setsar=1]",
+            "lavfi=[split [fg][bg]; [bg]format=yuv420p,scale=%d:%d:flags=fast_bilinear,avgblur=sizeX=12:sizeY=12,scale=%d:%d:flags=bilinear,eq=saturation=1.6:contrast=1.05[bg_glow]; [bg_glow][fg]overlay=%s:eof_action=pass:repeatlast=0,setsar=1]",
             dw, dh, target_w, target_h, overlay_coords
         )
     end
