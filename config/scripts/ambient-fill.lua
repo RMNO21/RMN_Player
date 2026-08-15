@@ -1,7 +1,7 @@
 -- ambient-fill.lua: Dynamic Fullscreen Background Fill & Ambient Glow
 -- Modes: Normal (Off) -> Blurred Background -> Ambient Glow
 -- Automatically detects screen resolution via Win32 API and activates ONLY in Fullscreen mode.
--- High-Contrast Highlight-Boosted Ambilight: Pure #000000 black canvas, luminance thresholding, and radiant highlight emission.
+-- Wide-Diffusion High-Contrast Ambilight: Seamless horizontal light blending, natural daylight ground glow, and zero patchy spots.
 
 local mp = require("mp")
 local msg = require("mp.msg")
@@ -158,16 +158,15 @@ local function apply_effect()
             scale_w, scale_h, target_w, target_h, overlay_coords
         )
     elseif mode_id == "ambient" then
-        -- High-Contrast Highlight-Boosted Ambilight:
-        -- 1. Base is pure #000000 jet black canvas.
-        -- 2. Shadow suppression (brightness=-0.14) ensures pure black is 100% preserved.
-        -- 3. Contrast (2.2) + Gamma (0.58) makes highlights (sky, signs, lights) intensely radiant.
-        -- 4. Saturation (2.2) produces rich, vivid colors with zero washed-out gray.
-        -- 5. 2D diffusion (sizeX=28, sizeY=6) creates silky volumetric clouds with natural decay.
-        local crop_d = 20
+        -- Wide-Diffusion Seamless Ambilight Mode:
+        -- 1. Base is 100% pure #000000 black canvas.
+        -- 2. Extended 36px sampling captures full scene context (sky, daylight ground, ambient surroundings).
+        -- 3. Balanced contrast (1.65), brightness (-0.07), gamma (0.75), saturation (1.95) prevents spotty blackouts while crushing dark shadows.
+        -- 4. Wide horizontal diffusion (avgblur sizeX=45) blends colors into a seamless luminous ribbon across the entire bar width.
+        local crop_d = 36
         if is_letterbox then
             vf_str = string.format(
-                "lavfi=[split=3[fg][s_top][s_bot]; [fg]pad=%d:%d:0:%d:black[base]; [s_top]crop=%d:%d:0:0,scale=100:10:flags=fast_bilinear,eq=contrast=2.2:brightness=-0.14:saturation=2.2:gamma=0.58,avgblur=sizeX=28:sizeY=6,scale=%d:%d:flags=bilinear[top_glow]; [s_bot]crop=%d:%d:0:%d,scale=100:10:flags=fast_bilinear,eq=contrast=2.2:brightness=-0.14:saturation=2.2:gamma=0.58,avgblur=sizeX=28:sizeY=6,scale=%d:%d:flags=bilinear[bot_glow]; [base][top_glow]overlay=0:0:eof_action=pass:repeatlast=0[b1]; [b1][bot_glow]overlay=0:%d:eof_action=pass:repeatlast=0,setsar=1]",
+                "lavfi=[split=3[fg][s_top][s_bot]; [fg]pad=%d:%d:0:%d:black[base]; [s_top]crop=%d:%d:0:0,scale=64:8:flags=fast_bilinear,eq=contrast=1.65:brightness=-0.07:saturation=1.95:gamma=0.75,avgblur=sizeX=45:sizeY=6,scale=%d:%d:flags=bilinear[top_glow]; [s_bot]crop=%d:%d:0:%d,scale=64:8:flags=fast_bilinear,eq=contrast=1.65:brightness=-0.07:saturation=1.95:gamma=0.75,avgblur=sizeX=45:sizeY=6,scale=%d:%d:flags=bilinear[bot_glow]; [base][top_glow]overlay=0:0:eof_action=pass:repeatlast=0[b1]; [b1][bot_glow]overlay=0:%d:eof_action=pass:repeatlast=0,setsar=1]",
                 target_w, target_h, bar_size,
                 vw, crop_d, vw, bar_size,
                 vw, crop_d, vh - crop_d, vw, bar_size,
@@ -175,7 +174,7 @@ local function apply_effect()
             )
         else
             vf_str = string.format(
-                "lavfi=[split=3[fg][s_lft][s_rgt]; [fg]pad=%d:%d:%d:0:black[base]; [s_lft]crop=%d:%d:0:0,scale=10:100:flags=fast_bilinear,eq=contrast=2.2:brightness=-0.14:saturation=2.2:gamma=0.58,avgblur=sizeX=6:sizeY=28,scale=%d:%d:flags=bilinear[lft_glow]; [s_rgt]crop=%d:%d:%d:0,scale=10:100:flags=fast_bilinear,eq=contrast=2.2:brightness=-0.14:saturation=2.2:gamma=0.58,avgblur=sizeX=6:sizeY=28,scale=%d:%d:flags=bilinear[rgt_glow]; [base][lft_glow]overlay=0:0:eof_action=pass:repeatlast=0[b1]; [b1][rgt_glow]overlay=%d:0:eof_action=pass:repeatlast=0,setsar=1]",
+                "lavfi=[split=3[fg][s_lft][s_rgt]; [fg]pad=%d:%d:%d:0:black[base]; [s_lft]crop=%d:%d:0:0,scale=8:64:flags=fast_bilinear,eq=contrast=1.65:brightness=-0.07:saturation=1.95:gamma=0.75,avgblur=sizeX=6:sizeY=45,scale=%d:%d:flags=bilinear[lft_glow]; [s_rgt]crop=%d:%d:%d:0,scale=8:64:flags=fast_bilinear,eq=contrast=1.65:brightness=-0.07:saturation=1.95:gamma=0.75,avgblur=sizeX=6:sizeY=45,scale=%d:%d:flags=bilinear[rgt_glow]; [base][lft_glow]overlay=0:0:eof_action=pass:repeatlast=0[b1]; [b1][rgt_glow]overlay=%d:0:eof_action=pass:repeatlast=0,setsar=1]",
                 target_w, target_h, bar_size,
                 crop_d, vh, bar_size, vh,
                 crop_d, vh, vw - crop_d, bar_size, vh,
@@ -236,4 +235,4 @@ mp.register_event("file-loaded", on_file_loaded)
 mp.observe_property("fullscreen", "bool", on_fullscreen_change)
 mp.observe_property("video-params", "native", apply_effect)
 
-msg.info("ambient-fill.lua initialized (highlight-boosted Ambilight on true black canvas).")
+msg.info("ambient-fill.lua initialized (wide-diffusion Ambilight on true black canvas).")
