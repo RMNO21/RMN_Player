@@ -1,10 +1,10 @@
 -- ambient-fill.lua: Dynamic Fullscreen Background Fill & Ambient Glow
 -- Modes: Normal (Off) -> Blurred Background -> Ambient Glow
--- Pure GPU GLSL User Shader Architecture: 100% Zero-CPU, Zero-Copy, 100% crash-proof seeking.
+-- Automatically detects screen resolution via Win32 API and activates ONLY in Fullscreen mode.
+-- True organic 2D Ambilight & Blurred Fill on 100% Pitch Black Canvas without stretching the video.
 
 local mp = require("mp")
 local msg = require("mp.msg")
-local utils = require("mp.utils")
 local ffi_loaded, ffi = pcall(require, "ffi")
 
 if ffi_loaded then
@@ -41,11 +41,7 @@ local MODES = {
     { id = "ambient", label = "Ambient Glow" },
 }
 local current_mode = 1 -- default off
-
-local function get_shaders_dir()
-    local config_dir = mp.command_native({"expand-path", "~~/shaders"})
-    return config_dir:gsub("\\", "/")
-end
+local last_applied_vf = ""
 
 local function get_screen_aspect()
     -- 1. Query the physical active monitor where MPV is located via Win32 API
@@ -103,9 +99,13 @@ local function apply_effect()
 
     -- Only apply in fullscreen mode and when mode > 1
     if not is_fs or current_mode == 1 then
-        mp.set_property("glsl-shaders", "")
-        mp.set_property("video-aspect-override", "-2")
-        mp.set_property("vf", "")
+        if last_applied_vf ~= "" then
+            mp.set_property("glsl-shaders", "")
+            mp.set_property("vf", "")
+            mp.set_property("video-aspect-override", "-2")
+            mp.set_property("hwdec", "auto-safe")
+            last_applied_vf = ""
+        end
         return
     end
 
@@ -119,31 +119,84 @@ local function apply_effect()
 
     -- If video matches screen aspect ratio within 0.8%, no letterbox/pillarbox needed
     if diff < 0.008 then
-        mp.set_property("glsl-shaders", "")
-        mp.set_property("video-aspect-override", "-2")
-        mp.set_property("vf", "")
+        if last_applied_vf ~= "" then
+            mp.set_property("glsl-shaders", "")
+            mp.set_property("vf", "")
+            mp.set_property("video-aspect-override", "-2")
+            mp.set_property("hwdec", "auto-safe")
+            last_applied_vf = ""
+        end
         return
     end
 
-    local shaders_dir = get_shaders_dir()
-    local mode_id = MODES[current_mode].id
-    local shader_file = ""
+    local is_letterbox = (v_aspect > target_aspect)
+    local target_w, target_h
+    local bar_size = 0
 
-    if mode_id == "blur" then
-        shader_file = shaders_dir .. "/blur-fill.hook"
-    elseif mode_id == "ambient" then
-        shader_file = shaders_dir .. "/ambilight.hook"
+    if is_letterbox then
+        -- Letterbox (bars on top/bottom, e.g. 16:9 on 16:10):
+        target_w = vw
+        target_h = math.floor((vw / target_aspect) / 2) * 2
+        bar_size = math.floor((target_h - vh) / 2)
+    else
+        -- Pillarbox (bars on left/right, e.g. 9:16 or 4:3 on 16:9):
+        target_w = math.floor((vh * target_aspect) / 2) * 2
+        target_h = vh
+        bar_size = math.floor((target_w - vw) / 2)
     end
 
-    if shader_file ~= "" then
-        mp.set_property("vf", "")
-        mp.set_property("video-aspect-override", tostring(target_aspect))
-        mp.set_property("glsl-shaders", shader_file)
-        msg.info(string.format("Applied GPU Shader %s (screen aspect: %.3f)", mode_id, target_aspect))
+    local vf_str = ""
+    local mode_id = MODES[current_mode].id
+
+    if mode_id == "blur" then
+        -- Blurred Background Mode: Full background softly blurred with single-axis aspect stretch
+        local scale_w = math.floor(vw / 4 / 2) * 2
+        local scale_h = math.floor(vh / 4 / 2) * 2
+        local overlay_coords = is_letterbox and "0:(H-h)/2" or "(W-w)/2:0"
+        vf_str = string.format(
+            "lavfi=[split [fg][bg]; [bg]format=yuv420p,scale=%d:%d:flags=fast_bilinear,avgblur=sizeX=6:sizeY=6,scale=%d:%d:flags=bilinear,eq=brightness=-0.1:contrast=0.92[bg_blur]; [bg_blur][fg]overlay=%s:eof_action=pass:repeatlast=0,setsar=1]",
+            scale_w, scale_h, target_w, target_h, overlay_coords
+        )
+    elseif mode_id == "ambient" then
+        -- High-Contrast Organic 2D Ambilight Mode:
+        -- Base is pure #000000 black canvas. 2D diffusion blooms from 20px edge band.
+        local crop_d = 20
+        if is_letterbox then
+            vf_str = string.format(
+                "lavfi=[split=3[fg][s_top][s_bot]; [fg]pad=%d:%d:0:%d:black[base]; [s_top]crop=%d:%d:0:0,scale=100:10:flags=fast_bilinear,eq=contrast=1.75:brightness=-0.08:saturation=1.85:gamma=0.68,avgblur=sizeX=20:sizeY=6,scale=%d:%d:flags=bilinear[top_glow]; [s_bot]crop=%d:%d:0:%d,scale=100:10:flags=fast_bilinear,eq=contrast=1.75:brightness=-0.08:saturation=1.85:gamma=0.68,avgblur=sizeX=20:sizeY=6,scale=%d:%d:flags=bilinear[bot_glow]; [base][top_glow]overlay=0:0:eof_action=pass:repeatlast=0[b1]; [b1][bot_glow]overlay=0:%d:eof_action=pass:repeatlast=0,setsar=1]",
+                target_w, target_h, bar_size,
+                vw, crop_d, vw, bar_size,
+                vw, crop_d, vh - crop_d, vw, bar_size,
+                target_h - bar_size
+            )
+        else
+            vf_str = string.format(
+                "lavfi=[split=3[fg][s_lft][s_rgt]; [fg]pad=%d:%d:%d:0:black[base]; [s_lft]crop=%d:%d:0:0,scale=10:100:flags=fast_bilinear,eq=contrast=1.75:brightness=-0.08:saturation=1.85:gamma=0.68,avgblur=sizeX=6:sizeY=20,scale=%d:%d:flags=bilinear[lft_glow]; [s_rgt]crop=%d:%d:%d:0,scale=10:100:flags=fast_bilinear,eq=contrast=1.75:brightness=-0.08:saturation=1.85:gamma=0.68,avgblur=sizeX=6:sizeY=20,scale=%d:%d:flags=bilinear[rgt_glow]; [base][lft_glow]overlay=0:0:eof_action=pass:repeatlast=0[b1]; [b1][rgt_glow]overlay=%d:0:eof_action=pass:repeatlast=0,setsar=1]",
+                target_w, target_h, bar_size,
+                crop_d, vh, bar_size, vh,
+                crop_d, vh, vw - crop_d, bar_size, vh,
+                target_w - bar_size
+            )
+        end
+    end
+
+    if vf_str == last_applied_vf then
+        return
+    end
+
+    if vf_str ~= "" then
+        mp.set_property("glsl-shaders", "")
+        mp.set_property("hwdec", "no")
+        mp.set_property("vf", vf_str)
+        mp.set_property("video-aspect-override", "-1")
+        last_applied_vf = vf_str
+        msg.info(string.format("Applied %s mode in fullscreen (%dx%d -> %dx%d)", mode_id, vw, vh, target_w, target_h))
     else
         mp.set_property("glsl-shaders", "")
-        mp.set_property("video-aspect-override", "-2")
         mp.set_property("vf", "")
+        mp.set_property("video-aspect-override", "-2")
+        mp.set_property("hwdec", "auto-safe")
+        last_applied_vf = ""
     end
 end
 
@@ -179,4 +232,4 @@ mp.register_event("file-loaded", on_file_loaded)
 mp.observe_property("fullscreen", "bool", on_fullscreen_change)
 mp.observe_property("video-params", "native", apply_effect)
 
-msg.info("ambient-fill.lua initialized (pure GPU GLSL shader engine).")
+msg.info("ambient-fill.lua initialized (true organic Ambilight on black canvas).")
