@@ -1,7 +1,7 @@
 -- ambient-fill.lua: Dynamic Fullscreen Background Fill & Ambient Glow
 -- Modes: Normal (Off) -> Blurred Background -> Ambient Glow
 -- Automatically detects screen resolution via Win32 API and activates ONLY in Fullscreen mode.
--- Blurred Background Mode: Natural Proportional Full-Frame Blur (Zero 1D Zooming, Organic Depth of Field, Zero Jitter).
+-- Blurred Background Mode: Deep Dreamy Proportional Full-Frame Blur (Heavy 2D Diffusion, Zero 1D Zoom, Low CPU).
 -- Ambient Glow Mode: Universal Symmetric Ambilight with 4% edge scan, multi-pass diffusion, temporal LERP, and power gamma.
 
 local mp = require("mp")
@@ -150,14 +150,17 @@ local function apply_effect()
     local mode_id = MODES[current_mode].id
 
     if mode_id == "blur" then
-        -- Natural Proportional Full-Frame Background Blur:
+        -- Deep Dreamy Proportional Full-Frame Blur:
         -- 1. Samples full frame proportionally with zero 1D zoom artifacts.
-        -- 2. Staged at 320x200 with heavy 2D isotropic boxblur (radius=14, power=3).
-        -- 3. Upscaled cleanly to full canvas with subtle 12% dimming so foreground video pops.
-        local staging_w = math.floor(target_w / 4 / 2) * 2
-        local staging_h = math.floor(target_h / 4 / 2) * 2
+        -- 2. Staged at 160x100 with heavy 2D multi-pass box diffusion (boxblur=24:5).
+        -- 3. Upscaled smoothly with bicubic spline reconstruction and 12% dimming.
+        local staging_w = math.floor(target_w / 8 / 2) * 2
+        local staging_h = math.floor(target_h / 8 / 2) * 2
+        if staging_w < 120 then staging_w = 160 end
+        if staging_h < 80 then staging_h = 100 end
+
         vf_str = string.format(
-            "lavfi=[split[fg][bg]; [bg]scale=%d:%d:flags=fast_bilinear,boxblur=14:3,scale=%d:%d:flags=bilinear,eq=brightness=-0.12:contrast=0.92[bg_blur]; [bg_blur][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
+            "lavfi=[split[fg][bg]; [bg]scale=%d:%d:flags=fast_bilinear,boxblur=24:5,scale=%d:%d:flags=bicubic,eq=brightness=-0.12:contrast=0.92[bg_blur]; [bg_blur][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
             staging_w, staging_h, target_w, target_h
         )
     elseif mode_id == "ambient" then
@@ -239,4 +242,4 @@ mp.register_event("file-loaded", on_file_loaded)
 mp.observe_property("fullscreen", "bool", on_fullscreen_change)
 mp.observe_property("video-params", "native", apply_effect)
 
-msg.info("ambient-fill.lua initialized (natural full-frame blur & universal symmetric Ambilight).")
+msg.info("ambient-fill.lua initialized (deep dreamy blur & universal symmetric Ambilight).")
