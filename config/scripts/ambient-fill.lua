@@ -1,7 +1,8 @@
 -- ambient-fill.lua: Dynamic Fullscreen Background Fill & Ambient Glow
 -- Modes: Normal (Off) -> Blurred Background -> Ambient Glow
 -- Automatically detects screen resolution via Win32 API and activates ONLY in Fullscreen mode.
--- Ultra-Lightweight (<0.05% CPU), Zero-Banding, and 5-Frame Temporal LERP Smoothing.
+-- Blurred Background Mode: Natural Proportional Full-Frame Blur (Zero 1D Zooming, Organic Depth of Field, Zero Jitter).
+-- Ambient Glow Mode: Universal Symmetric Ambilight with 4% edge scan, multi-pass diffusion, temporal LERP, and power gamma.
 
 local mp = require("mp")
 local msg = require("mp.msg")
@@ -149,29 +150,16 @@ local function apply_effect()
     local mode_id = MODES[current_mode].id
 
     if mode_id == "blur" then
-        -- Ultra-Lightweight (128 pixels total, <0.05% CPU), Zero-Banding, 5-Frame LERP:
-        -- 1. Spatial 2px Boundary Clamping: Zero interior geometry dragged into bars.
-        -- 2. Anti-Aliased Staging: scale=32:4:flags=area on 128 total pixels.
-        -- 3. 5-Frame Temporal Smoothing: tmix=frames=5:weights='1 2 3 4 5' eliminates camera jitter & flicker.
-        -- 4. Deep Liquid Diffusion: avgblur=sizeX=20:sizeY=3 prevents stepped rings.
-        -- 5. Bicubic Spline Scaling: Reconstructs continuous smooth falloff to true #000000.
-        if is_letterbox then
-            vf_str = string.format(
-                "lavfi=[split=3[fg][s_top][s_bot]; [fg]pad=%d:%d:0:%d:black[base]; [s_top]crop=%d:2:0:0,scale=32:4:flags=area,tmix=frames=5:weights='1 2 3 4 5',avgblur=sizeX=20:sizeY=3,eq=contrast=0.85:brightness=-0.10:saturation=0.85:gamma=0.90,scale=%d:%d:flags=bicubic[top_blur]; [s_bot]crop=%d:2:0:%d,scale=32:4:flags=area,tmix=frames=5:weights='1 2 3 4 5',avgblur=sizeX=20:sizeY=3,eq=contrast=0.85:brightness=-0.10:saturation=0.85:gamma=0.90,scale=%d:%d:flags=bicubic[bot_blur]; [base][top_blur]overlay=0:0:eof_action=pass:repeatlast=0[b1]; [b1][bot_blur]overlay=0:%d:eof_action=pass:repeatlast=0,setsar=1]",
-                target_w, target_h, bar_size,
-                vw, vw, bar_size,
-                vw, vh - 2, vw, bar_size,
-                target_h - bar_size
-            )
-        else
-            vf_str = string.format(
-                "lavfi=[split=3[fg][s_lft][s_rgt]; [fg]pad=%d:%d:%d:0:black[base]; [s_lft]crop=2:%d:0:0,scale=4:32:flags=area,tmix=frames=5:weights='1 2 3 4 5',avgblur=sizeX=3:sizeY=20,eq=contrast=0.85:brightness=-0.10:saturation=0.85:gamma=0.90,scale=%d:%d:flags=bicubic[lft_blur]; [s_rgt]crop=2:%d:%d:0,scale=4:32:flags=area,tmix=frames=5:weights='1 2 3 4 5',avgblur=sizeX=3:sizeY=20,eq=contrast=0.85:brightness=-0.10:saturation=0.85:gamma=0.90,scale=%d:%d:flags=bicubic[rgt_blur]; [base][lft_blur]overlay=0:0:eof_action=pass:repeatlast=0[b1]; [b1][rgt_blur]overlay=%d:0:eof_action=pass:repeatlast=0,setsar=1]",
-                target_w, target_h, bar_size,
-                vh, bar_size, vh,
-                vh, vw - 2, bar_size, vh,
-                target_w - bar_size
-            )
-        end
+        -- Natural Proportional Full-Frame Background Blur:
+        -- 1. Samples full frame proportionally with zero 1D zoom artifacts.
+        -- 2. Staged at 320x200 with heavy 2D isotropic boxblur (radius=14, power=3).
+        -- 3. Upscaled cleanly to full canvas with subtle 12% dimming so foreground video pops.
+        local staging_w = math.floor(target_w / 4 / 2) * 2
+        local staging_h = math.floor(target_h / 4 / 2) * 2
+        vf_str = string.format(
+            "lavfi=[split[fg][bg]; [bg]scale=%d:%d:flags=fast_bilinear,boxblur=14:3,scale=%d:%d:flags=bilinear,eq=brightness=-0.12:contrast=0.92[bg_blur]; [bg_blur][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
+            staging_w, staging_h, target_w, target_h
+        )
     elseif mode_id == "ambient" then
         -- Universal Symmetric Ambilight Pipeline:
         -- 1. Symmetric 4% Edge Sampling: Identical mathematical input depth.
@@ -251,4 +239,4 @@ mp.register_event("file-loaded", on_file_loaded)
 mp.observe_property("fullscreen", "bool", on_fullscreen_change)
 mp.observe_property("video-params", "native", apply_effect)
 
-msg.info("ambient-fill.lua initialized (ultra-light zero-banding Ambilight & Blur).")
+msg.info("ambient-fill.lua initialized (natural full-frame blur & universal symmetric Ambilight).")
