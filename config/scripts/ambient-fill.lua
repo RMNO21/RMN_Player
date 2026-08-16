@@ -1,7 +1,7 @@
 -- ambient-fill.lua: Dynamic Fullscreen Background Fill & Ambient Glow
 -- Modes: Normal (Off) -> Blurred Background -> Ambient Glow
 -- Automatically detects screen resolution via Win32 API and activates ONLY in Fullscreen mode.
--- Blurred Background Mode: 1D Boundary Extrusion, Anisotropic Diffusion, Photometric Falloff, and Perceptual Luminance/Chroma Attenuation.
+-- Blurred Background Mode: 1D Boundary Extrusion, Ultra-Wide Anisotropic Diffusion, Temporal LERP, and Photometric Falloff.
 -- Ambient Glow Mode: Universal Symmetric Ambilight with 4% edge scan, multi-pass diffusion, temporal LERP, and power gamma.
 
 local mp = require("mp")
@@ -150,14 +150,16 @@ local function apply_effect()
     local mode_id = MODES[current_mode].id
 
     if mode_id == "blur" then
-        -- 1D Boundary Extrusion + Anisotropic Diffusion + Perceptual Attenuation:
+        -- Polished 1D Boundary Extrusion + Ultra-Wide Anisotropic Diffusion + Temporal LERP:
         -- 1. Spatial Sampling: 2px boundary clamping (zero interior faces/geometry dragged into bars).
-        -- 2. Anisotropic Diffusion: 128x4 staging buffer with heavy horizontal smoothing (sizeX=48, sizeY=2).
-        -- 3. Perceptual Colorimetry: 45% luminance attenuation + 20% chroma compression (contrast=0.85:brightness=-0.12:saturation=0.80:gamma=0.90).
-        -- 4. Photometric Falloff: Bilinear vertical scaling smoothly dissolves background toward outer bezel.
+        -- 2. Ultra-Wide Anisotropic Diffusion: 64x4 staging buffer with heavy horizontal smoothing (sizeX=48, sizeY=2)
+        --    completely diffuses narrow vertical occluders (antlers, wires, poles) into adjacent landscape colors.
+        -- 3. Temporal LERP Filtering: tmix=frames=3:weights='1 2 3' smoothly interpolates motion and scene transitions.
+        -- 4. Perceptual Colorimetry: 45% luminance attenuation + 15% chroma compression (contrast=0.85:brightness=-0.10:saturation=0.85:gamma=0.90).
+        -- 5. Photometric Falloff: Bilinear vertical scaling smoothly dissolves background toward outer bezel.
         if is_letterbox then
             vf_str = string.format(
-                "lavfi=[split=3[fg][s_top][s_bot]; [fg]pad=%d:%d:0:%d:black[base]; [s_top]crop=%d:2:0:0,scale=128:4:flags=fast_bilinear,avgblur=sizeX=48:sizeY=2,eq=contrast=0.85:brightness=-0.12:saturation=0.80:gamma=0.90,scale=%d:%d:flags=bilinear[top_blur]; [s_bot]crop=%d:2:0:%d,scale=128:4:flags=fast_bilinear,avgblur=sizeX=48:sizeY=2,eq=contrast=0.85:brightness=-0.12:saturation=0.80:gamma=0.90,scale=%d:%d:flags=bilinear[bot_blur]; [base][top_blur]overlay=0:0:eof_action=pass:repeatlast=0[b1]; [b1][bot_blur]overlay=0:%d:eof_action=pass:repeatlast=0,setsar=1]",
+                "lavfi=[split=3[fg][s_top][s_bot]; [fg]pad=%d:%d:0:%d:black[base]; [s_top]crop=%d:2:0:0,scale=64:4:flags=fast_bilinear,avgblur=sizeX=48:sizeY=2,tmix=frames=3:weights='1 2 3',eq=contrast=0.85:brightness=-0.10:saturation=0.85:gamma=0.90,scale=%d:%d:flags=bilinear[top_blur]; [s_bot]crop=%d:2:0:%d,scale=64:4:flags=fast_bilinear,avgblur=sizeX=48:sizeY=2,tmix=frames=3:weights='1 2 3',eq=contrast=0.85:brightness=-0.10:saturation=0.85:gamma=0.90,scale=%d:%d:flags=bilinear[bot_blur]; [base][top_blur]overlay=0:0:eof_action=pass:repeatlast=0[b1]; [b1][bot_blur]overlay=0:%d:eof_action=pass:repeatlast=0,setsar=1]",
                 target_w, target_h, bar_size,
                 vw, vw, bar_size,
                 vw, vh - 2, vw, bar_size,
@@ -165,7 +167,7 @@ local function apply_effect()
             )
         else
             vf_str = string.format(
-                "lavfi=[split=3[fg][s_lft][s_rgt]; [fg]pad=%d:%d:%d:0:black[base]; [s_lft]crop=2:%d:0:0,scale=4:128:flags=fast_bilinear,avgblur=sizeX=2:sizeY=48,eq=contrast=0.85:brightness=-0.12:saturation=0.80:gamma=0.90,scale=%d:%d:flags=bilinear[lft_blur]; [s_rgt]crop=2:%d:%d:0,scale=4:128:flags=fast_bilinear,avgblur=sizeX=2:sizeY=48,eq=contrast=0.85:brightness=-0.12:saturation=0.80:gamma=0.90,scale=%d:%d:flags=bilinear[rgt_blur]; [base][lft_blur]overlay=0:0:eof_action=pass:repeatlast=0[b1]; [b1][rgt_blur]overlay=%d:0:eof_action=pass:repeatlast=0,setsar=1]",
+                "lavfi=[split=3[fg][s_lft][s_rgt]; [fg]pad=%d:%d:%d:0:black[base]; [s_lft]crop=2:%d:0:0,scale=4:64:flags=fast_bilinear,avgblur=sizeX=2:sizeY=48,tmix=frames=3:weights='1 2 3',eq=contrast=0.85:brightness=-0.10:saturation=0.85:gamma=0.90,scale=%d:%d:flags=bilinear[lft_blur]; [s_rgt]crop=2:%d:%d:0,scale=4:64:flags=fast_bilinear,avgblur=sizeX=2:sizeY=48,tmix=frames=3:weights='1 2 3',eq=contrast=0.85:brightness=-0.10:saturation=0.85:gamma=0.90,scale=%d:%d:flags=bilinear[rgt_blur]; [base][lft_blur]overlay=0:0:eof_action=pass:repeatlast=0[b1]; [b1][rgt_blur]overlay=%d:0:eof_action=pass:repeatlast=0,setsar=1]",
                 target_w, target_h, bar_size,
                 vh, bar_size, vh,
                 vh, vw - 2, bar_size, vh,
@@ -252,4 +254,4 @@ mp.register_event("file-loaded", on_file_loaded)
 mp.observe_property("fullscreen", "bool", on_fullscreen_change)
 mp.observe_property("video-params", "native", apply_effect)
 
-msg.info("ambient-fill.lua initialized (1D boundary extrusion blur & universal symmetric Ambilight).")
+msg.info("ambient-fill.lua initialized (polished 1D boundary extrusion blur & universal symmetric Ambilight).")
