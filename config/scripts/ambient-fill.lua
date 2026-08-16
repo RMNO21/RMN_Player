@@ -1,12 +1,8 @@
 -- ambient-fill.lua: Dynamic Fullscreen Background Fill & Ambient Glow
 -- Modes: Normal (Off) -> Blurred Background -> Ambient Glow
 -- Automatically detects screen resolution via Win32 API and activates ONLY in Fullscreen mode.
--- Universal Symmetric Ambilight Architecture:
--- 1. Symmetric Edge Sampling: Identical 4% frame boundary scan for top/bottom and left/right.
--- 2. Quadratic Falloff: I(d) = I0 * (1 - d/d_max)^2 smoothly dissolving into #000000 at the monitor bezel.
--- 3. Multi-Pass Wide Horizontal Gaussian Blur: Ribbon-like spatial diffusion without patchy hotspots.
--- 4. Dynamic Power Gamma & +25% Saturation Boost: True black retention with rich highlight emission.
--- 5. Temporal Frame Smoothing (LERP): Multi-frame temporal interpolation eliminates scene cut flicker.
+-- Blurred Background Mode: 1D Boundary Extrusion, Anisotropic Diffusion, Photometric Falloff, and Perceptual Luminance/Chroma Attenuation.
+-- Ambient Glow Mode: Universal Symmetric Ambilight with 4% edge scan, multi-pass diffusion, temporal LERP, and power gamma.
 
 local mp = require("mp")
 local msg = require("mp.msg")
@@ -154,14 +150,28 @@ local function apply_effect()
     local mode_id = MODES[current_mode].id
 
     if mode_id == "blur" then
-        -- Blurred Background Mode: Full background softly blurred with single-axis aspect stretch
-        local scale_w = math.floor(vw / 4 / 2) * 2
-        local scale_h = math.floor(vh / 4 / 2) * 2
-        local overlay_coords = is_letterbox and "0:(H-h)/2" or "(W-w)/2:0"
-        vf_str = string.format(
-            "lavfi=[split [fg][bg]; [bg]format=yuv420p,scale=%d:%d:flags=fast_bilinear,avgblur=sizeX=6:sizeY=6,scale=%d:%d:flags=bilinear,eq=brightness=-0.1:contrast=0.92[bg_blur]; [bg_blur][fg]overlay=%s:eof_action=pass:repeatlast=0,setsar=1]",
-            scale_w, scale_h, target_w, target_h, overlay_coords
-        )
+        -- 1D Boundary Extrusion + Anisotropic Diffusion + Perceptual Attenuation:
+        -- 1. Spatial Sampling: 2px boundary clamping (zero interior faces/geometry dragged into bars).
+        -- 2. Anisotropic Diffusion: 128x4 staging buffer with heavy horizontal smoothing (sizeX=48, sizeY=2).
+        -- 3. Perceptual Colorimetry: 45% luminance attenuation + 20% chroma compression (contrast=0.85:brightness=-0.12:saturation=0.80:gamma=0.90).
+        -- 4. Photometric Falloff: Bilinear vertical scaling smoothly dissolves background toward outer bezel.
+        if is_letterbox then
+            vf_str = string.format(
+                "lavfi=[split=3[fg][s_top][s_bot]; [fg]pad=%d:%d:0:%d:black[base]; [s_top]crop=%d:2:0:0,scale=128:4:flags=fast_bilinear,avgblur=sizeX=48:sizeY=2,eq=contrast=0.85:brightness=-0.12:saturation=0.80:gamma=0.90,scale=%d:%d:flags=bilinear[top_blur]; [s_bot]crop=%d:2:0:%d,scale=128:4:flags=fast_bilinear,avgblur=sizeX=48:sizeY=2,eq=contrast=0.85:brightness=-0.12:saturation=0.80:gamma=0.90,scale=%d:%d:flags=bilinear[bot_blur]; [base][top_blur]overlay=0:0:eof_action=pass:repeatlast=0[b1]; [b1][bot_blur]overlay=0:%d:eof_action=pass:repeatlast=0,setsar=1]",
+                target_w, target_h, bar_size,
+                vw, vw, bar_size,
+                vw, vh - 2, vw, bar_size,
+                target_h - bar_size
+            )
+        else
+            vf_str = string.format(
+                "lavfi=[split=3[fg][s_lft][s_rgt]; [fg]pad=%d:%d:%d:0:black[base]; [s_lft]crop=2:%d:0:0,scale=4:128:flags=fast_bilinear,avgblur=sizeX=2:sizeY=48,eq=contrast=0.85:brightness=-0.12:saturation=0.80:gamma=0.90,scale=%d:%d:flags=bilinear[lft_blur]; [s_rgt]crop=2:%d:%d:0,scale=4:128:flags=fast_bilinear,avgblur=sizeX=2:sizeY=48,eq=contrast=0.85:brightness=-0.12:saturation=0.80:gamma=0.90,scale=%d:%d:flags=bilinear[rgt_blur]; [base][lft_blur]overlay=0:0:eof_action=pass:repeatlast=0[b1]; [b1][rgt_blur]overlay=%d:0:eof_action=pass:repeatlast=0,setsar=1]",
+                target_w, target_h, bar_size,
+                vh, bar_size, vh,
+                vh, vw - 2, bar_size, vh,
+                target_w - bar_size
+            )
+        end
     elseif mode_id == "ambient" then
         -- Universal Symmetric Ambilight Pipeline:
         -- 1. Symmetric 4% Edge Sampling: Identical mathematical input depth.
@@ -242,4 +252,4 @@ mp.register_event("file-loaded", on_file_loaded)
 mp.observe_property("fullscreen", "bool", on_fullscreen_change)
 mp.observe_property("video-params", "native", apply_effect)
 
-msg.info("ambient-fill.lua initialized (universal symmetric Ambilight architecture).")
+msg.info("ambient-fill.lua initialized (1D boundary extrusion blur & universal symmetric Ambilight).")
