@@ -23,6 +23,7 @@ A high-performance custom media player for Windows with OLED-tuned rendering, in
 | **OLED True Black & Debanding** | Native 10-bit dithered pipeline with libplacebo debanding for clean gradients and true blacks. |
 | **Fast Timeline Previews** | High-speed hover thumbnails via `thumbfast`. |
 | **Modern Minimal UI** | Elegant floating controls powered by `uosc`. |
+| **Check & Update Latest Version** | Built-in non-blocking GitHub update checker accessible directly in the context menu or via shortcut. Checks for new releases and updates automatically with zero interruption. |
 
 ---
 
@@ -63,6 +64,7 @@ All letter shortcuts are mapped for both **English (EN)** and **Persian (FA)** k
 | <kbd>a</kbd> / <kbd>ش</kbd> | Audio tracks menu |
 | <kbd>o</kbd> / <kbd>خ</kbd> | Open Windows Explorer file dialog |
 | <kbd>u</kbd> / <kbd>ع</kbd> | Open URL popup to stream links |
+| <kbd>Shift</kbd> + <kbd>u</kbd> | **Check and update latest version** |
 | <kbd>s</kbd> / <kbd>س</kbd> | Screenshot |
 | <kbd>Tab</kbd> | Toggle UI visibility |
 
@@ -77,6 +79,8 @@ Configuration files are installed at `%APPDATA%\RMN-Player\`:
 ├── mpv.conf               # Video & audio rendering pipeline
 ├── input.conf             # Bilingual keybindings & mouse actions
 ├── episode-tracker.json   # Local episode tracking database
+├── version.json           # Installed version metadata & changelog
+├── update-rmn.ps1         # Automated update script
 ├── script-opts/
 │   ├── uosc.conf          # Modern UI layout & tokens
 │   ├── thumbfast.conf     # Thumbnail preview settings
@@ -87,6 +91,7 @@ Configuration files are installed at `%APPDATA%\RMN-Player\`:
 │   ├── episode-tracker.lua# Watched tracking & resume
 │   ├── loop-cycle.lua     # Unified 3-state loop controller
 │   ├── open-url.lua       # Online streaming input popup
+│   ├── rmn-updater.lua    # GitHub update checker & manager
 │   ├── save-position.lua  # Resume playback manager
 │   ├── thumbfast.lua      # Thumbnail engine
 │   └── uosc/              # UI framework
@@ -100,6 +105,12 @@ Configuration files are installed at `%APPDATA%\RMN-Player\`:
 ```powershell
 # Standard Install / Update
 .\rmn-installer.ps1
+
+# Check for updates only
+.\update-rmn.ps1 -CheckOnly
+
+# Apply latest update automatically from GitHub
+.\update-rmn.ps1
 
 # Update Configuration Only (skip binary copy)
 .\rmn-installer.ps1 -ConfigOnly
