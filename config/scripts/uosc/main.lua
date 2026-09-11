@@ -374,8 +374,10 @@ function create_default_menu_items()
 				{title = t('Show in directory'), value = 'script-binding uosc/show-in-directory'},
 				{title = t('Open config folder'), value = 'script-binding uosc/open-config-directory'},
 				{title = t('Update uosc'), value = 'script-binding uosc/update'},
+				{title = 'Check and update latest version', value = 'script-message check-rmn-update'},
 			},
 		},
+		{title = 'Check and update latest version', value = 'script-message check-rmn-update'},
 		{title = t('Quit'), value = 'quit'},
 	}
 end

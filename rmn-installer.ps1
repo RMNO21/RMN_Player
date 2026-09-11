@@ -109,7 +109,7 @@ function Install-ConfigFiles {
     # Copy config files from package
     if (Test-Path $PackageConfigDir) {
         # Main config files
-        $configFiles = @("mpv.conf", "input.conf", "episode-tracker.json")
+        $configFiles = @("mpv.conf", "input.conf", "episode-tracker.json", "version.json")
         foreach ($file in $configFiles) {
             $src = Join-Path $PackageConfigDir $file
             if (Test-Path $src) {
@@ -141,6 +141,13 @@ function Install-ConfigFiles {
                 Copy-Item -Path "$PackageConfigDir\scripts\uosc\*" -Destination "$ConfigDir\scripts\uosc" -Force -Recurse
             }
             Write-Status "Copied scripts" "Info"
+        }
+
+        # Updater utility script
+        $updaterScript = Join-Path $ScriptDir "update-rmn.ps1"
+        if (Test-Path $updaterScript) {
+            Copy-Item -Path $updaterScript -Destination (Join-Path $ConfigDir "update-rmn.ps1") -Force
+            Write-Status "Copied update-rmn.ps1" "Info"
         }
         
         Write-Status "Configuration files installed" "Success"
@@ -345,7 +352,7 @@ function Register-Uninstall {
     try {
         New-Item -Path $uninstallKey -Force | Out-Null
         Set-ItemProperty -Path $uninstallKey -Name "DisplayName" -Value "RMN-Player"
-        Set-ItemProperty -Path $uninstallKey -Name "DisplayVersion" -Value "1.0.0"
+        Set-ItemProperty -Path $uninstallKey -Name "DisplayVersion" -Value "1.1.0"
         Set-ItemProperty -Path $uninstallKey -Name "Publisher" -Value "RMN-Player"
         Set-ItemProperty -Path $uninstallKey -Name "InstallLocation" -Value $InstallDir
         Set-ItemProperty -Path $uninstallKey -Name "UninstallString" -Value "`"$uninstallCmd`""
