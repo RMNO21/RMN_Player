@@ -215,30 +215,20 @@ local function apply_effect()
             original_audio_delay = nil
         end
 
-        -- True Boundary Ambilight (Per-Edge Dedicated Glow):
-        -- 1. Dedicated Boundary Sampling:
-        --    - Letterbox: Top bar samples purely from top border (crop_d), bottom bar from bottom border.
-        --      Mountains/objects inside the frame never leak or cast inverted shadows into the top sky glow.
-        --    - Pillarbox: Left bar samples left border, right bar samples right border.
-        -- 2. Clean Chromatic Blur: gblur with sigma=3 on planar GBRP preserves true chromatic tone.
-        -- 3. Temporal Stability: 3-frame weighted tmix eliminates inter-frame jitter.
-        -- 4. Debanded Spline Upscale: Bicubic upscale directly to bar dimensions + gradfun debanding.
-        -- 5. Seamless Layout: vstack/hstack architecture with zero unnatural black clipping or inverted contrast.
-        if is_letterbox then
-            local crop_d = math.max(12, math.floor(vh * 0.04))
-            vf_str = string.format(
-                "lavfi=[split=3[fg][top_in][bot_in]; [top_in]crop=iw:%d:0:0,scale=64:8:flags=area,format=gbrp,gblur=sigma=3:steps=2,format=yuv420p,tmix=frames=3:weights='1 2 4',scale=%d:%d:flags=bicubic,gradfun=strength=4.0:radius=16,eq=saturation=1.15[top_glow]; [bot_in]crop=iw:%d:0:ih-%d,scale=64:8:flags=area,format=gbrp,gblur=sigma=3:steps=2,format=yuv420p,tmix=frames=3:weights='1 2 4',scale=%d:%d:flags=bicubic,gradfun=strength=4.0:radius=16,eq=saturation=1.15[bot_glow]; [top_glow][fg][bot_glow]vstack=3,setsar=1]",
-                crop_d, target_w, bar_size,
-                crop_d, crop_d, target_w, bar_size
-            )
-        else
-            local crop_d = math.max(12, math.floor(vw * 0.04))
-            vf_str = string.format(
-                "lavfi=[split=3[fg][lft_in][rgt_in]; [lft_in]crop=%d:ih:0:0,scale=8:64:flags=area,format=gbrp,gblur=sigma=3:steps=2,format=yuv420p,tmix=frames=3:weights='1 2 4',scale=%d:%d:flags=bicubic,gradfun=strength=4.0:radius=16,eq=saturation=1.15[lft_glow]; [rgt_in]crop=%d:ih:iw-%d:0,scale=8:64:flags=area,format=gbrp,gblur=sigma=3:steps=2,format=yuv420p,tmix=frames=3:weights='1 2 4',scale=%d:%d:flags=bicubic,gradfun=strength=4.0:radius=16,eq=saturation=1.15[rgt_glow]; [lft_glow][fg][rgt_glow]hstack=3,setsar=1]",
-                crop_d, bar_size, target_h,
-                crop_d, crop_d, bar_size, target_h
-            )
-        end
+        -- Directional Ambient Glow (Zero Shadow Bleed & Perfect Centered Alignment):
+        -- 1. Directional Diffusion:
+        --    - Letterbox: High horizontal blur (sizeX=25) for smooth light spread across the bar,
+        --      low vertical blur (sizeY=3 on 90p) so mountains/content below never leak into top sky.
+        --    - Pillarbox: High vertical blur (sizeY=25), low horizontal blur (sizeX=3 on 90p).
+        -- 2. Safe Centered Overlay: uses (W-w)/2:(H-h)/2 so video is always dead-center without any offset.
+        -- 3. Natural Tone & Deband: No aggressive geq contrast multiplier; gradfun debanding + 1.15 saturation.
+        local staging_res = is_letterbox and "160:90" or "90:160"
+        local blur_params = is_letterbox and "sizeX=25:sizeY=3" or "sizeX=3:sizeY=25"
+
+        vf_str = string.format(
+            "lavfi=[split[fg][bg]; [bg]scale=%s:flags=fast_bilinear,avgblur=%s,tmix=frames=3:weights='1 2 4',scale=%d:%d:flags=bicubic,gradfun=strength=3.0:radius=16,eq=saturation=1.15[bg_glow]; [bg_glow][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
+            staging_res, blur_params, target_w, target_h
+        )
     end
 
     if vf_str == last_applied_vf then
