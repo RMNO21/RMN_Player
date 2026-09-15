@@ -155,10 +155,12 @@ local function apply_effect()
         -- Intelligent Peripheral-Aware Solid Ambient:
         -- 1. Peripheral Sampling: Crops border bands (top/bottom or left/right), completely ignoring 
         --    central 70% where actors move. Eliminates walking-induced flicker at the physical source.
-        -- 2. IIR Adaptive Temporal Filter (hqdn3d=0:0:28:28): Higher temporal strength for ultra-fluid,
-        --    cinematic-smooth transitions. Accumulator still flushes within 2-3 frames on scene cuts.
-        -- 3. Weighted Micro-Smoothing (tmix 1:2:3:5:8): 5-frame Fibonacci-weighted blend for
-        --    buttery, gradual fade-in with zero hard edges.
+        -- 2. 16-bit Upscale before IIR: converts to yuv420p16le so each integer step is 1/256th of
+        --    an 8-bit step — quantization stepping becomes completely invisible.
+        -- 3. IIR Adaptive Filter (hqdn3d=0:0:60:60): temporal strength 60 = ultra-slow, butter-smooth
+        --    exponential tracking. Even large scene cuts fade in over ~8-10 frames (no hard jumps).
+        -- 4. Linear Moving Average (tmix frames=12, equal weights): 12-frame sliding window averages
+        --    out any remaining sub-luma-unit ripple — true continuous dissolve between colors.
         local sample_filter = ""
         if is_letterbox then
             -- Sample top 18% & bottom 18% bands, merge together, exclude center
@@ -169,7 +171,7 @@ local function apply_effect()
         end
 
         vf_str = string.format(
-            "lavfi=[split[fg][bg]; [bg]%s,format=yuv420p,hqdn3d=0:0:28:28,tmix=frames=5:weights='1 2 3 5 8',eq=contrast=0.95:brightness=-0.06:saturation=1.20:gamma=0.88,scale=%d:%d:flags=neighbor[bg_solid]; [bg_solid][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
+            "lavfi=[split[fg][bg]; [bg]%s,format=yuv420p16le,hqdn3d=0:0:60:60,tmix=frames=12:weights='1 1 1 1 1 1 1 1 1 1 1 1',format=yuv420p,eq=contrast=0.95:brightness=-0.06:saturation=1.20:gamma=0.88,scale=%d:%d:flags=neighbor[bg_solid]; [bg_solid][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
             sample_filter, target_w, target_h
         )
     elseif mode_id == "ambient" then
