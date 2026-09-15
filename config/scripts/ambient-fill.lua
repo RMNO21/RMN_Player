@@ -215,15 +215,15 @@ local function apply_effect()
             original_audio_delay = nil
         end
 
-        -- Pure Optical Ambilight (Zero Artificial Black Borders & 100% Faithful Dynamic Range):
+        -- Pure Optical Ambilight with Deep Shadows & High Contrast:
         -- 1. True Color Fidelity: White scenes stay 100% pure white across the entire screen; black stays 100% pure black.
-        -- 2. Zero Artificial Vignette: No fake darkness or gray halos added at the bezel edges.
-        -- 3. Planar GBRP Blur: Multi-pass gblur (sigma=4, steps=2) on planar GBRP preserves true chromatic tone.
-        -- 4. Perfectly Aligned Diffusion: area downscale + bicubic upscale with 5.0 debanding eliminates color banding.
-        -- 5. Standard centered overlay keeps the video perfectly framed with zero skew.
+        -- 2. Power Gamma Curve (gamma=0.78): Shadows and dark regions become significantly darker/deeper,
+        --    while bright highlights stay bright and midtones do not get falsely lifted.
+        -- 3. Crisp Contrast (1.15) & Rich Saturation (1.20) for vibrant, cinematic Ambilight.
+        -- 4. Zero Artificial Vignette: No fake bezel shadows or edge clipping.
         local base_scale = is_letterbox and "32:18" or "18:32"
         vf_str = string.format(
-            "lavfi=[split[fg][bg]; [bg]scale=%s:flags=area,format=gbrp,gblur=sigma=4:steps=2,format=yuv420p,tmix=frames=3:weights='1 2 4',scale=%d:%d:flags=bicubic,gradfun=strength=5.0:radius=16,eq=saturation=1.20[bg_glow]; [bg_glow][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
+            "lavfi=[split[fg][bg]; [bg]scale=%s:flags=area,format=gbrp,gblur=sigma=4:steps=2,format=yuv420p,tmix=frames=3:weights='1 2 4',scale=%d:%d:flags=bicubic,gradfun=strength=5.0:radius=16,eq=gamma=0.78:contrast=1.15:saturation=1.20[bg_glow]; [bg_glow][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
             base_scale, target_w, target_h
         )
     end
