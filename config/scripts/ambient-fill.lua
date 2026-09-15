@@ -215,27 +215,16 @@ local function apply_effect()
             original_audio_delay = nil
         end
 
-        -- Progressive Edge Contrast Ambilight (Zero Artificial Black Borders, Pure Luminance Preservation):
-        -- 1. Zero Artificial Black Borders: No forced black vignette. White scenes stay 100% pure white, black scenes stay pure black.
-        -- 2. Variable Edge Contrast: Contrast increases progressively from 1.1 near video to 5.0 at the outer screen edges.
-        -- 3. Pure Chromatic Fidelity: Contrast operates on Luminance (YUV), completely locking HUE so skin tones never turn orange.
-        -- 4. Planar GBRP Blur: gblur with sigma=4 on GBRP preserves full chromatic fidelity without chroma stripping.
-        -- 5. Perfect Spatial Alignment & Deband: area downscale + bicubic upscale for dead-center sub-pixel matching.
-        -- Natural Optical Luminance Falloff (True Cinema Ambilight):
-        -- 1. Balanced 1.15 contrast ensures vivid, clear illumination without dark clipping.
-        -- 2. Quadratic Luminance Decay: (1.0 - 0.65*d^2) smoothly dissolves outer screen edges towards darkness.
-        -- 3. Planar GBRP diffusion + bicubic upscale guarantees velvety gradient transition.
+        -- Pure Optical Ambilight (Zero Artificial Black Borders & 100% Faithful Dynamic Range):
+        -- 1. True Color Fidelity: White scenes stay 100% pure white across the entire screen; black stays 100% pure black.
+        -- 2. Zero Artificial Vignette: No fake darkness or gray halos added at the bezel edges.
+        -- 3. Planar GBRP Blur: Multi-pass gblur (sigma=4, steps=2) on planar GBRP preserves true chromatic tone.
+        -- 4. Perfectly Aligned Diffusion: area downscale + bicubic upscale with 5.0 debanding eliminates color banding.
+        -- 5. Standard centered overlay keeps the video perfectly framed with zero skew.
         local base_scale = is_letterbox and "32:18" or "18:32"
-        local dist_expr = is_letterbox
-            and "abs(2*Y - (H-1))/(H-1)"
-            or  "abs(2*X - (W-1))/(W-1)"
-        local geq_expr = string.format(
-            "lum='clip((128 + 1.15*(lum(X,Y)-128)) * (1.0 - 0.65*pow(%s, 2)), 0, 255)':cb='cb(X,Y)':cr='cr(X,Y)'",
-            dist_expr
-        )
         vf_str = string.format(
-            "lavfi=[split[fg][bg]; [bg]scale=%s:flags=area,format=gbrp,gblur=sigma=4:steps=2,format=yuv420p,geq=%s,tmix=frames=3:weights='1 2 4',scale=%d:%d:flags=bicubic,gradfun=strength=5.0:radius=16,eq=saturation=1.20[bg_glow]; [bg_glow][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
-            base_scale, geq_expr, target_w, target_h
+            "lavfi=[split[fg][bg]; [bg]scale=%s:flags=area,format=gbrp,gblur=sigma=4:steps=2,format=yuv420p,tmix=frames=3:weights='1 2 4',scale=%d:%d:flags=bicubic,gradfun=strength=5.0:radius=16,eq=saturation=1.20[bg_glow]; [bg_glow][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
+            base_scale, target_w, target_h
         )
     end
 
