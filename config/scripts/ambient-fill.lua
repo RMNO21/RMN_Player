@@ -161,6 +161,8 @@ local function apply_effect()
         --    oldest→newest = [1 2 2 3 5 7 10 14 20 28 40 58 82 118 168 240 343 490 700 1000].
         --    This is a pure FIR filter → ZERO oscillation, ZERO nonlinear artifacts.
         --    Effective lag = only ~77ms. Scene cuts reach 90% convergence in ~6 frames (200ms).
+        -- 4. YouTube-style tone: heavily darkened (brightness=-0.28), low contrast (0.65),
+        --    desaturated (saturation=0.65) — subtle ambient glow that does NOT draw attention.
         local sample_filter = ""
         if is_letterbox then
             -- Sample top 18% & bottom 18% bands, merge together, exclude center
@@ -171,7 +173,7 @@ local function apply_effect()
         end
 
         vf_str = string.format(
-            "lavfi=[split[fg][bg]; [bg]%s,format=yuv420p16le,tmix=frames=20:weights='1 2 2 3 5 7 10 14 20 28 40 58 82 118 168 240 343 490 700 1000',format=yuv420p,eq=contrast=0.95:brightness=-0.06:saturation=1.20:gamma=0.88,scale=%d:%d:flags=neighbor[bg_solid]; [bg_solid][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
+            "lavfi=[split[fg][bg]; [bg]%s,format=yuv420p16le,tmix=frames=20:weights='1 2 2 3 5 7 10 14 20 28 40 58 82 118 168 240 343 490 700 1000',format=yuv420p,eq=contrast=0.65:brightness=-0.28:saturation=0.65:gamma=0.95,scale=%d:%d:flags=neighbor[bg_solid]; [bg_solid][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
             sample_filter, target_w, target_h
         )
     elseif mode_id == "ambient" then
