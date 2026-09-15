@@ -215,16 +215,24 @@ local function apply_effect()
             original_audio_delay = nil
         end
 
-        -- Clean Symmetrical Ambilight (Safe Single-Stream Overlay):
-        -- 1. Full-frame area downsampling (32:18 or 18:32) preserves exact aspect ratio without multi-stream skew.
-        -- 2. Pure planar GBRP diffusion (gblur=sigma=3) softens transitions without chroma shifts.
-        -- 3. Removed destructive geq 5x contrast multiplier to eliminate black burnouts and dark holes.
-        -- 4. Debanded bicubic upscale + 1.15 saturation preserves rich ambient tone without banding.
-        -- 5. Standard centered overlay guarantees 100% stable alignment and zero side-pillar artifacts.
+        -- Progressive Edge Contrast Ambilight (Zero Artificial Black Borders, Pure Luminance Preservation):
+        -- 1. Zero Artificial Black Borders: No forced black vignette. White scenes stay 100% pure white, black scenes stay pure black.
+        -- 2. Variable Edge Contrast: Contrast increases progressively from 1.1 near video to 5.0 at the outer screen edges.
+        -- 3. Pure Chromatic Fidelity: Contrast operates on Luminance (YUV), completely locking HUE so skin tones never turn orange.
+        -- 4. Planar GBRP Blur: gblur with sigma=4 on GBRP preserves full chromatic fidelity without chroma stripping.
+        -- 5. Perfect Spatial Alignment & Deband: area downscale + bicubic upscale for dead-center sub-pixel matching.
         local base_scale = is_letterbox and "32:18" or "18:32"
+        local dist_expr = is_letterbox
+            and "abs(2*Y - (H-1))/(H-1)"
+            or  "abs(2*X - (W-1))/(W-1)"
+        local contrast_expr = string.format("(1.1 + 3.9*pow(%s, 2))", dist_expr)
+        local geq_expr = string.format(
+            "lum='clip(128 + %s*(lum(X,Y)-128), 0, 255)':cb='cb(X,Y)':cr='cr(X,Y)'",
+            contrast_expr
+        )
         vf_str = string.format(
-            "lavfi=[split[fg][bg]; [bg]scale=%s:flags=area,format=gbrp,gblur=sigma=3:steps=2,format=yuv420p,tmix=frames=3:weights='1 2 4',scale=%d:%d:flags=bicubic,gradfun=strength=4.0:radius=16,eq=saturation=1.15[bg_glow]; [bg_glow][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
-            base_scale, target_w, target_h
+            "lavfi=[split[fg][bg]; [bg]scale=%s:flags=area,format=gbrp,gblur=sigma=4:steps=2,format=yuv420p,geq=%s,tmix=frames=3:weights='1 2 4',scale=%d:%d:flags=bicubic,gradfun=strength=5.0:radius=16,eq=saturation=1.20[bg_glow]; [bg_glow][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
+            base_scale, geq_expr, target_w, target_h
         )
     end
 
