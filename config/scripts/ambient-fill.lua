@@ -198,8 +198,14 @@ local function apply_effect()
         -- 3. Symmetric Gaussian tmix (M=2L+1=15, sigma=4): weights centered at position 7
         --    '216 325 458 607 755 883 969 1000 969 883 755 607 458 325 216'
         --    Crossfade spans ±2*sigma=±8 frames = ±267ms at 30fps. Ultra-smooth, cinematic.
+        -- Anti-micro-jump pipeline (two-pronged):
+        --   a) hqdn3d=0:0:4:4 before tmix: suppresses ±4-luma compression noise in source
+        --      signal BEFORE it enters the gaussian window. Scene cuts (diff >>4) pass through.
+        --   b) format=yuv420p AFTER scale: dithering is applied to the full-size image
+        --      (e.g. 400x300 = 120k pixels) instead of 1x1 pixel, giving sub-LSB resolution
+        --      through spatial dithering that the eye integrates to a smooth gradient.
         vf_str = string.format(
-            "lavfi=[split[fg_raw][bg]; [fg_raw]tpad=start=%d:start_mode=clone[fg]; [bg]%s,format=yuv420p16le,tmix=frames=15:weights='216 325 458 607 755 883 969 1000 969 883 755 607 458 325 216',format=yuv420p,scale=%d:%d:flags=neighbor[bg_solid]; [bg_solid][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
+            "lavfi=[split[fg_raw][bg]; [fg_raw]tpad=start=%d:start_mode=clone[fg]; [bg]%s,hqdn3d=0:0:4:4,format=yuv420p16le,tmix=frames=15:weights='216 325 458 607 755 883 969 1000 969 883 755 607 458 325 216',scale=%d:%d:flags=neighbor,format=yuv420p[bg_solid]; [bg_solid][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
             SOLID_LOOKAHEAD, sample_filter, target_w, target_h
         )
     elseif mode_id == "ambient" then
