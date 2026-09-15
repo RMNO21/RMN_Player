@@ -196,7 +196,7 @@ local function apply_effect()
         mp.set_property("audio-delay", tostring(base_delay + SOLID_LOOKAHEAD / fps))
 
         vf_str = string.format(
-            "lavfi=[split[fg_raw][bg]; [fg_raw]tpad=start=%d:start_mode=clone[fg]; [bg]%s,format=yuv420p16le,tmix=frames=7:weights='325 607 883 1000 883 607 325',format=yuv420p,eq=contrast=0.65:brightness=-0.28:saturation=0.65:gamma=0.95,scale=%d:%d:flags=neighbor[bg_solid]; [bg_solid][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
+            "lavfi=[split[fg_raw][bg]; [fg_raw]tpad=start=%d:start_mode=clone[fg]; [bg]%s,format=yuv420p16le,tmix=frames=7:weights='325 607 883 1000 883 607 325',format=yuv420p,scale=%d:%d:flags=neighbor[bg_solid]; [bg_solid][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
             SOLID_LOOKAHEAD, sample_filter, target_w, target_h
         )
     elseif mode_id == "ambient" then
