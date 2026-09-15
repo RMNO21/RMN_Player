@@ -1,11 +1,11 @@
 {
   "name": "RMN-Player",
-  "version": "1.1.3",
-  "version_code": 113,
+  "version": "1.1.4",
+  "version_code": 114,
   "release_date": "2026-09-16",
   "channel": "stable",
   "repository": "RMNO21/RMN_Player",
-  "changelog": "Solid Color: Peripheral border sampling & IIR adaptive tracking for zero flicker and instant scene cuts.",
+  "changelog": "Ambient Glow: Unified 4-Principle Optical Ambilight — zero fake vignette, n-dome light distribution, natural distance decay, and deep shadow contrast.",
   "html_url": "https://github.com/RMNO21/RMN_Player",
   "download_url": "https://github.com/RMNO21/RMN_Player/archive/refs/heads/main.zip"
 }
