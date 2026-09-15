@@ -217,14 +217,14 @@ local function apply_effect()
 
         -- Pure Optical Ambilight with Deep Shadows & High Contrast:
         -- 1. True Color Fidelity: White scenes stay 100% pure white across the entire screen; black stays 100% pure black.
-        -- 2. Extreme Bipolar Contrast (gamma=0.30, contrast=2.80, brightness=-0.10):
-        --    Zero midtones! Either pure bright (>=200 goes straight to 255 bright) or deep black (<=130 plunges to 0-10 pitch black).
-        -- 3. Vivid Saturation (1.30) for glowing highlights.
+        -- 2. Balanced Deep Contrast (gamma=0.45, contrast=1.85, brightness=-0.05):
+        --    Smooth yet deep: shadows sink to deep darkness while bright highlights glow naturally without harsh clipping.
+        -- 3. Vivid Saturation (1.22) for vibrant ambient tones.
         -- 4. Zero Artificial Vignette: Perfect uniform color when the video is a solid hue.
         -- 5. Wide-Radius Debanding: gradfun with strength=5.0 and max radius=32 for broad gradient smoothing.
         local base_scale = is_letterbox and "32:18" or "18:32"
         vf_str = string.format(
-            "lavfi=[split[fg][bg]; [bg]scale=%s:flags=area,format=gbrp,gblur=sigma=4:steps=2,format=yuv420p,tmix=frames=3:weights='1 2 4',scale=%d:%d:flags=bicubic,gradfun=strength=5.0:radius=32,eq=gamma=0.30:contrast=2.80:brightness=-0.10:saturation=1.30[bg_glow]; [bg_glow][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
+            "lavfi=[split[fg][bg]; [bg]scale=%s:flags=area,format=gbrp,gblur=sigma=4:steps=2,format=yuv420p,tmix=frames=3:weights='1 2 4',scale=%d:%d:flags=bicubic,gradfun=strength=5.0:radius=32,eq=gamma=0.45:contrast=1.85:brightness=-0.05:saturation=1.22[bg_glow]; [bg_glow][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
             base_scale, target_w, target_h
         )
     end
