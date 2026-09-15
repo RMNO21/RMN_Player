@@ -43,6 +43,11 @@ local MODES = {
 }
 local current_mode = 1 -- default off
 local last_applied_vf = ""
+-- Solid Color look-ahead: [fg] is delayed SOLID_LOOKAHEAD frames so the gaussian ambient
+-- is centered symmetrically on the current displayed frame (past + future frames blended).
+-- audio-delay is compensated automatically when solid mode is active.
+local SOLID_LOOKAHEAD = 3        -- video delay frames (~100ms at 30fps, ~67ms at 45fps)
+local original_audio_delay = nil -- saved audio-delay before solid mode compensation
 
 local function get_screen_aspect()
     -- 1. Query the physical active monitor where MPV is located via Win32 API
@@ -107,6 +112,11 @@ local function apply_effect()
             mp.set_property("hwdec", "auto-safe")
             last_applied_vf = ""
         end
+        -- Restore audio-delay that was set for solid mode look-ahead compensation
+        if original_audio_delay ~= nil then
+            mp.set_property("audio-delay", original_audio_delay)
+            original_audio_delay = nil
+        end
         return
     end
 
@@ -126,6 +136,10 @@ local function apply_effect()
             mp.set_property("video-aspect-override", "-2")
             mp.set_property("hwdec", "auto-safe")
             last_applied_vf = ""
+        end
+        if original_audio_delay ~= nil then
+            mp.set_property("audio-delay", original_audio_delay)
+            original_audio_delay = nil
         end
         return
     end
@@ -152,31 +166,46 @@ local function apply_effect()
     local mode_id = MODES[current_mode].id
 
     if mode_id == "solid" then
-        -- Intelligent Peripheral-Aware Solid Ambient:
-        -- 1. Peripheral Sampling: Crops border bands (top/bottom or left/right), completely ignoring
-        --    central 70% where actors move. Eliminates walking-induced flicker at the physical source.
-        -- 2. 16-bit processing (yuv420p16le): weighted sums computed at 16-bit precision,
-        --    so sub-luma-unit blends are quantization-free at output. Zero stepping.
-        -- 3. Geometric EMA via tmix (k=0.7, N=20): weights follow a pure geometric series
-        --    oldest→newest = [1 2 2 3 5 7 10 14 20 28 40 58 82 118 168 240 343 490 700 1000].
-        --    This is a pure FIR filter → ZERO oscillation, ZERO nonlinear artifacts.
-        --    Effective lag = only ~77ms. Scene cuts reach 90% convergence in ~6 frames (200ms).
-        -- 4. YouTube-style tone: heavily darkened (brightness=-0.28), low contrast (0.65),
-        --    desaturated (saturation=0.65) — subtle ambient glow that does NOT draw attention.
+        -- Centered Gaussian Ambient with Look-Ahead (Non-Causal Temporal Filter):
+        -- 1. Peripheral Sampling: border bands only, ignoring central 70%.
+        -- 2. tpad=start=LOOKAHEAD: delays [fg] video by SOLID_LOOKAHEAD frames so the tmix
+        --    window is centered on the currently displayed frame. The ambient "sees" past AND
+        --    future frames relative to what's on screen — scene transitions start early.
+        -- 3. Symmetric Gaussian tmix (M=2L+1=7, sigma=2): weights '325 607 883 1000 883 607 325'
+        --    →  past frames  ←  current  →  future frames  ←
+        --    At the exact scene cut frame: 50% old / 50% new ambient (perfect crossfade).
+        --    Crossfade spans ±SOLID_LOOKAHEAD frames = ±100ms at 30fps (±67ms at 45fps).
+        -- 4. Audio-delay compensated below to keep A/V sync after video delay.
+        -- 5. 16-bit processing + YouTube-style tone (dark, desaturated, non-distracting).
         local sample_filter = ""
         if is_letterbox then
-            -- Sample top 18% & bottom 18% bands, merge together, exclude center
             sample_filter = "scale=32:18:flags=area,split[t_in][b_in]; [t_in]crop=iw:3:0:0[top]; [b_in]crop=iw:3:0:ih-3[bot]; [top][bot]vstack,scale=1:1:flags=area"
         else
-            -- Sample left 18% & right 18% bands, merge together, exclude center
             sample_filter = "scale=18:32:flags=area,split[l_in][r_in]; [l_in]crop=3:ih:0:0[left]; [r_in]crop=3:ih:iw-3:0[right]; [left][right]hstack,scale=1:1:flags=area"
         end
 
+        -- Compensate audio-delay: tpad shifts video PTS by +SOLID_LOOKAHEAD frames,
+        -- so audio must be delayed by the same duration to stay in sync.
+        local fps = mp.get_property_native("container-fps")
+               or mp.get_property_native("estimated-vf-fps")
+               or 30
+        if original_audio_delay == nil then
+            original_audio_delay = mp.get_property("audio-delay") or "0"
+        end
+        local base_delay = tonumber(original_audio_delay) or 0
+        mp.set_property("audio-delay", tostring(base_delay + SOLID_LOOKAHEAD / fps))
+
         vf_str = string.format(
-            "lavfi=[split[fg][bg]; [bg]%s,format=yuv420p16le,tmix=frames=20:weights='1 2 2 3 5 7 10 14 20 28 40 58 82 118 168 240 343 490 700 1000',format=yuv420p,eq=contrast=0.65:brightness=-0.28:saturation=0.65:gamma=0.95,scale=%d:%d:flags=neighbor[bg_solid]; [bg_solid][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
-            sample_filter, target_w, target_h
+            "lavfi=[split[fg_raw][bg]; [fg_raw]tpad=start=%d:start_mode=clone[fg]; [bg]%s,format=yuv420p16le,tmix=frames=7:weights='325 607 883 1000 883 607 325',format=yuv420p,eq=contrast=0.65:brightness=-0.28:saturation=0.65:gamma=0.95,scale=%d:%d:flags=neighbor[bg_solid]; [bg_solid][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
+            SOLID_LOOKAHEAD, sample_filter, target_w, target_h
         )
     elseif mode_id == "ambient" then
+        -- Restore audio-delay when switching to Ambient Glow (no lookahead needed there)
+        if original_audio_delay ~= nil then
+            mp.set_property("audio-delay", original_audio_delay)
+            original_audio_delay = nil
+        end
+
         -- Progressive Edge Contrast Ambilight (Zero Artificial Black Borders, Pure Luminance Preservation):
         -- 1. Zero Artificial Black Borders: No forced black vignette. White scenes stay 100% pure white, black scenes stay pure black.
         -- 2. Variable Edge Contrast: Contrast increases progressively from 1.1 near video to 5.0 at the outer screen edges.
