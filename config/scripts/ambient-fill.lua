@@ -215,25 +215,30 @@ local function apply_effect()
             original_audio_delay = nil
         end
 
-        -- Progressive Edge Contrast Ambilight (Zero Artificial Black Borders, Pure Luminance Preservation):
-        -- 1. Zero Artificial Black Borders: No forced black vignette. White scenes stay 100% pure white, black scenes stay pure black.
-        -- 2. Variable Edge Contrast: Contrast increases progressively from 1.1 near video to 5.0 at the outer screen edges.
-        -- 3. Pure Chromatic Fidelity: Contrast operates on Luminance (YUV), completely locking HUE so skin tones never turn orange.
-        -- 4. Planar GBRP Blur: gblur with sigma=4 on GBRP preserves full chromatic fidelity without chroma stripping.
-        -- 5. Perfect Spatial Alignment & Deband: area downscale + bicubic upscale for dead-center sub-pixel matching.
-        local base_scale = is_letterbox and "32:18" or "18:32"
-        local dist_expr = is_letterbox
-            and "abs(2*Y - (H-1))/(H-1)"
-            or  "abs(2*X - (W-1))/(W-1)"
-        local contrast_expr = string.format("(1.1 + 3.9*pow(%s, 2))", dist_expr)
-        local geq_expr = string.format(
-            "lum='clip(128 + %s*(lum(X,Y)-128), 0, 255)':cb='cb(X,Y)':cr='cr(X,Y)'",
-            contrast_expr
-        )
-        vf_str = string.format(
-            "lavfi=[split[fg][bg]; [bg]scale=%s:flags=area,format=gbrp,gblur=sigma=4:steps=2,format=yuv420p,geq=%s,tmix=frames=3:weights='1 2 4',scale=%d:%d:flags=bicubic,gradfun=strength=5.0:radius=16,eq=saturation=1.20[bg_glow]; [bg_glow][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
-            base_scale, geq_expr, target_w, target_h
-        )
+        -- True Boundary Ambilight (Per-Edge Dedicated Glow):
+        -- 1. Dedicated Boundary Sampling:
+        --    - Letterbox: Top bar samples purely from top border (crop_d), bottom bar from bottom border.
+        --      Mountains/objects inside the frame never leak or cast inverted shadows into the top sky glow.
+        --    - Pillarbox: Left bar samples left border, right bar samples right border.
+        -- 2. Clean Chromatic Blur: gblur with sigma=3 on planar GBRP preserves true chromatic tone.
+        -- 3. Temporal Stability: 3-frame weighted tmix eliminates inter-frame jitter.
+        -- 4. Debanded Spline Upscale: Bicubic upscale directly to bar dimensions + gradfun debanding.
+        -- 5. Seamless Layout: vstack/hstack architecture with zero unnatural black clipping or inverted contrast.
+        if is_letterbox then
+            local crop_d = math.max(12, math.floor(vh * 0.04))
+            vf_str = string.format(
+                "lavfi=[split=3[fg][top_in][bot_in]; [top_in]crop=iw:%d:0:0,scale=64:8:flags=area,format=gbrp,gblur=sigma=3:steps=2,format=yuv420p,tmix=frames=3:weights='1 2 4',scale=%d:%d:flags=bicubic,gradfun=strength=4.0:radius=16,eq=saturation=1.15[top_glow]; [bot_in]crop=iw:%d:0:ih-%d,scale=64:8:flags=area,format=gbrp,gblur=sigma=3:steps=2,format=yuv420p,tmix=frames=3:weights='1 2 4',scale=%d:%d:flags=bicubic,gradfun=strength=4.0:radius=16,eq=saturation=1.15[bot_glow]; [top_glow][fg][bot_glow]vstack=3,setsar=1]",
+                crop_d, target_w, bar_size,
+                crop_d, crop_d, target_w, bar_size
+            )
+        else
+            local crop_d = math.max(12, math.floor(vw * 0.04))
+            vf_str = string.format(
+                "lavfi=[split=3[fg][lft_in][rgt_in]; [lft_in]crop=%d:ih:0:0,scale=8:64:flags=area,format=gbrp,gblur=sigma=3:steps=2,format=yuv420p,tmix=frames=3:weights='1 2 4',scale=%d:%d:flags=bicubic,gradfun=strength=4.0:radius=16,eq=saturation=1.15[lft_glow]; [rgt_in]crop=%d:ih:iw-%d:0,scale=8:64:flags=area,format=gbrp,gblur=sigma=3:steps=2,format=yuv420p,tmix=frames=3:weights='1 2 4',scale=%d:%d:flags=bicubic,gradfun=strength=4.0:radius=16,eq=saturation=1.15[rgt_glow]; [lft_glow][fg][rgt_glow]hstack=3,setsar=1]",
+                crop_d, bar_size, target_h,
+                crop_d, crop_d, bar_size, target_h
+            )
+        end
     end
 
     if vf_str == last_applied_vf then
