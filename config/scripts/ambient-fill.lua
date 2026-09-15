@@ -225,7 +225,7 @@ local function apply_effect()
         local dist_expr = is_letterbox
             and "abs(2*Y - (H-1))/(H-1)"
             or  "abs(2*X - (W-1))/(W-1)"
-        local contrast_expr = string.format("(2.0 - 2.0*pow(%s, 2))", dist_expr)
+        local contrast_expr = string.format("(2.0 - 1.9*pow(%s, 2))", dist_expr)
         local geq_expr = string.format(
             "lum='clip(128 + %s*(lum(X,Y)-128), 0, 255)':cb='cb(X,Y)':cr='cr(X,Y)'",
             contrast_expr
