@@ -217,15 +217,17 @@ local function apply_effect()
 
         -- Pure Optical Ambilight with Deep Shadows & High Contrast:
         -- 1. True Color Fidelity: White scenes stay 100% pure white across the entire screen; black stays 100% pure black.
-        -- 2. Balanced Deep Contrast (gamma=0.45, contrast=1.85, brightness=-0.05):
-        --    Smooth yet deep: shadows sink to deep darkness while bright highlights glow naturally without harsh clipping.
-        -- 3. Vivid Saturation (1.22) for vibrant ambient tones.
-        -- 4. Zero Artificial Vignette: Perfect uniform color when the video is a solid hue.
-        -- 5. Wide-Radius Debanding: gradfun with strength=5.0 and max radius=32 for broad gradient smoothing.
-        local base_scale = is_letterbox and "32:18" or "18:32"
+        -- True n-Dome Optical Ambilight:
+        -- 1. n-Dome Light Distribution: Unified horizontal diffusion (avgblur) merges window lights into a continuous
+        --    convex light dome ('n' shape), eliminating the inner 'U' notch caused by dark occluders inside windows.
+        -- 2. Natural Optical Distance Decay: Light shines bright near the frame and dissolves smoothly into darkness with distance.
+        -- 3. 100% Uniform Dynamic Range: Pure white screens stay 100% white (255) across the entire screen — zero artificial vignette.
+        -- 4. Planar GBRP Multi-Pass Diffusion + Debanding (radius=32) for silky soft dispersion.
+        local base_scale = is_letterbox and "48:27" or "27:48"
+        local avg_params = is_letterbox and "sizeX=13:sizeY=7" or "sizeX=7:sizeY=13"
         vf_str = string.format(
-            "lavfi=[split[fg][bg]; [bg]scale=%s:flags=area,format=gbrp,gblur=sigma=4:steps=2,format=yuv420p,tmix=frames=3:weights='1 2 4',scale=%d:%d:flags=bicubic,gradfun=strength=5.0:radius=32,eq=gamma=0.45:contrast=1.85:brightness=-0.05:saturation=1.22[bg_glow]; [bg_glow][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
-            base_scale, target_w, target_h
+            "lavfi=[split[fg][bg]; [bg]scale=%s:flags=area,avgblur=%s,format=gbrp,gblur=sigma=4:steps=2,format=yuv420p,tmix=frames=3:weights='1 2 4',scale=%d:%d:flags=bicubic,gradfun=strength=5.0:radius=32,eq=contrast=1.20:saturation=1.20[bg_glow]; [bg_glow][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
+            base_scale, avg_params, target_w, target_h
         )
     end
 
