@@ -215,29 +215,17 @@ local function apply_effect()
             original_audio_delay = nil
         end
 
-        -- Pure Boundary 1D Extrusion Ambilight (Solutions 1 & 2):
-        -- 1. Solution 1 (1D Pure Edge Clamping):
-        --    - Letterbox: samples extreme top border (12px) compressed to 48x1, and extreme bottom to 48x1.
-        --      Stacked vertically into a 48x2 texture. Mountains/objects inside the frame CANNOT leak into top glow.
-        --    - Pillarbox: samples extreme left border compressed to 1x48, and extreme right to 1x48 (2x48 texture).
-        -- 2. Solution 2 (Clean Optical Diffusion & Zero Artificial Black Clamping):
-        --    - Removed aggressive geq 5x contrast multiplier to eliminate ugly dark holes and burnouts.
-        --    - Planar GBRP diffusion (gblur=sigma=3) + bicubic upscale for ultra-smooth optical illumination.
-        --    - gradfun debanding + 1.15 saturation preserves vivid ambient warmth without artificial vignette falloff.
-        -- 3. Dead-center overlay architecture guarantees perfect aspect alignment and zero video shift.
-        if is_letterbox then
-            local crop_d = math.max(8, math.floor(vh * 0.02))
-            vf_str = string.format(
-                "lavfi=[split=3[fg][top_src][bot_src]; [top_src]crop=iw:%d:0:0,scale=48:1:flags=area[top_row]; [bot_src]crop=iw:%d:0:ih-%d,scale=48:1:flags=area[bot_row]; [top_row][bot_row]vstack,format=gbrp,gblur=sigma=3:steps=2,format=yuv420p,tmix=frames=3:weights='1 2 4',scale=%d:%d:flags=bicubic,gradfun=strength=3.0:radius=16,eq=saturation=1.15[bg_glow]; [bg_glow][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
-                crop_d, crop_d, crop_d, target_w, target_h
-            )
-        else
-            local crop_d = math.max(8, math.floor(vw * 0.02))
-            vf_str = string.format(
-                "lavfi=[split=3[fg][lft_src][rgt_src]; [lft_src]crop=%d:ih:0:0,scale=1:48:flags=area[lft_col]; [rgt_src]crop=%d:ih:iw-%d:0,scale=1:48:flags=area[rgt_col]; [lft_col][rgt_col]hstack,format=gbrp,gblur=sigma=3:steps=2,format=yuv420p,tmix=frames=3:weights='1 2 4',scale=%d:%d:flags=bicubic,gradfun=strength=3.0:radius=16,eq=saturation=1.15[bg_glow]; [bg_glow][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
-                crop_d, crop_d, crop_d, target_w, target_h
-            )
-        end
+        -- Clean Symmetrical Ambilight (Safe Single-Stream Overlay):
+        -- 1. Full-frame area downsampling (32:18 or 18:32) preserves exact aspect ratio without multi-stream skew.
+        -- 2. Pure planar GBRP diffusion (gblur=sigma=3) softens transitions without chroma shifts.
+        -- 3. Removed destructive geq 5x contrast multiplier to eliminate black burnouts and dark holes.
+        -- 4. Debanded bicubic upscale + 1.15 saturation preserves rich ambient tone without banding.
+        -- 5. Standard centered overlay guarantees 100% stable alignment and zero side-pillar artifacts.
+        local base_scale = is_letterbox and "32:18" or "18:32"
+        vf_str = string.format(
+            "lavfi=[split[fg][bg]; [bg]scale=%s:flags=area,format=gbrp,gblur=sigma=3:steps=2,format=yuv420p,tmix=frames=3:weights='1 2 4',scale=%d:%d:flags=bicubic,gradfun=strength=4.0:radius=16,eq=saturation=1.15[bg_glow]; [bg_glow][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
+            base_scale, target_w, target_h
+        )
     end
 
     if vf_str == last_applied_vf then
