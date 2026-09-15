@@ -215,25 +215,29 @@ local function apply_effect()
             original_audio_delay = nil
         end
 
-        -- Progressive Edge Contrast Ambilight (Zero Artificial Black Borders, Pure Luminance Preservation):
-        -- 1. Zero Artificial Black Borders: No forced black vignette. White scenes stay 100% pure white, black scenes stay pure black.
-        -- 2. Variable Edge Contrast: Contrast increases progressively from 1.1 near video to 5.0 at the outer screen edges.
-        -- 3. Pure Chromatic Fidelity: Contrast operates on Luminance (YUV), completely locking HUE so skin tones never turn orange.
-        -- 4. Planar GBRP Blur: gblur with sigma=4 on GBRP preserves full chromatic fidelity without chroma stripping.
-        -- 5. Perfect Spatial Alignment & Deband: area downscale + bicubic upscale for dead-center sub-pixel matching.
-        local base_scale = is_letterbox and "32:18" or "18:32"
-        local dist_expr = is_letterbox
-            and "abs(2*Y - (H-1))/(H-1)"
-            or  "abs(2*X - (W-1))/(W-1)"
-        local contrast_expr = string.format("(1.1 + 3.9*pow(%s, 2))", dist_expr)
-        local geq_expr = string.format(
-            "lum='clip(128 + %s*(lum(X,Y)-128), 0, 255)':cb='cb(X,Y)':cr='cr(X,Y)'",
-            contrast_expr
-        )
-        vf_str = string.format(
-            "lavfi=[split[fg][bg]; [bg]scale=%s:flags=area,format=gbrp,gblur=sigma=4:steps=2,format=yuv420p,geq=%s,tmix=frames=3:weights='1 2 4',scale=%d:%d:flags=bicubic,gradfun=strength=5.0:radius=16,eq=saturation=1.20[bg_glow]; [bg_glow][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
-            base_scale, geq_expr, target_w, target_h
-        )
+        -- Pure Boundary 1D Extrusion Ambilight (Solutions 1 & 2):
+        -- 1. Solution 1 (1D Pure Edge Clamping):
+        --    - Letterbox: samples extreme top border (12px) compressed to 48x1, and extreme bottom to 48x1.
+        --      Stacked vertically into a 48x2 texture. Mountains/objects inside the frame CANNOT leak into top glow.
+        --    - Pillarbox: samples extreme left border compressed to 1x48, and extreme right to 1x48 (2x48 texture).
+        -- 2. Solution 2 (Clean Optical Diffusion & Zero Artificial Black Clamping):
+        --    - Removed aggressive geq 5x contrast multiplier to eliminate ugly dark holes and burnouts.
+        --    - Planar GBRP diffusion (gblur=sigma=3) + bicubic upscale for ultra-smooth optical illumination.
+        --    - gradfun debanding + 1.15 saturation preserves vivid ambient warmth without artificial vignette falloff.
+        -- 3. Dead-center overlay architecture guarantees perfect aspect alignment and zero video shift.
+        if is_letterbox then
+            local crop_d = math.max(8, math.floor(vh * 0.02))
+            vf_str = string.format(
+                "lavfi=[split=3[fg][top_src][bot_src]; [top_src]crop=iw:%d:0:0,scale=48:1:flags=area[top_row]; [bot_src]crop=iw:%d:0:ih-%d,scale=48:1:flags=area[bot_row]; [top_row][bot_row]vstack,format=gbrp,gblur=sigma=3:steps=2,format=yuv420p,tmix=frames=3:weights='1 2 4',scale=%d:%d:flags=bicubic,gradfun=strength=3.0:radius=16,eq=saturation=1.15[bg_glow]; [bg_glow][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
+                crop_d, crop_d, crop_d, target_w, target_h
+            )
+        else
+            local crop_d = math.max(8, math.floor(vw * 0.02))
+            vf_str = string.format(
+                "lavfi=[split=3[fg][lft_src][rgt_src]; [lft_src]crop=%d:ih:0:0,scale=1:48:flags=area[lft_col]; [rgt_src]crop=%d:ih:iw-%d:0,scale=1:48:flags=area[rgt_col]; [lft_col][rgt_col]hstack,format=gbrp,gblur=sigma=3:steps=2,format=yuv420p,tmix=frames=3:weights='1 2 4',scale=%d:%d:flags=bicubic,gradfun=strength=3.0:radius=16,eq=saturation=1.15[bg_glow]; [bg_glow][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
+                crop_d, crop_d, crop_d, target_w, target_h
+            )
+        end
     end
 
     if vf_str == last_applied_vf then
