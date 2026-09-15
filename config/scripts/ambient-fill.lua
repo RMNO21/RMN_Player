@@ -153,14 +153,14 @@ local function apply_effect()
 
     if mode_id == "solid" then
         -- Intelligent Peripheral-Aware Solid Ambient:
-        -- 1. Peripheral Sampling: Crops border bands (top/bottom or left/right), completely ignoring 
+        -- 1. Peripheral Sampling: Crops border bands (top/bottom or left/right), completely ignoring
         --    central 70% where actors move. Eliminates walking-induced flicker at the physical source.
-        -- 2. 16-bit processing (yuv420p16le): each color step = 1/256th of an 8-bit step,
-        --    so transitions are quantization-free and perfectly smooth — no stepping ever.
-        -- 3. IIR Adaptive Filter (hqdn3d=0:0:15:15): responsive enough to catch scene cuts in
-        --    ~2-3 frames, while still smoothing sub-threshold gradual ambient drift.
-        -- 4. Short Weighted tmix (frames=5, linear): ~100ms total lag, weights bias toward recent
-        --    frames so new scene color dominates quickly without a hard jump.
+        -- 2. 16-bit processing (yuv420p16le): weighted sums computed at 16-bit precision,
+        --    so sub-luma-unit blends are quantization-free at output. Zero stepping.
+        -- 3. Geometric EMA via tmix (k=0.7, N=20): weights follow a pure geometric series
+        --    oldest→newest = [1 2 2 3 5 7 10 14 20 28 40 58 82 118 168 240 343 490 700 1000].
+        --    This is a pure FIR filter → ZERO oscillation, ZERO nonlinear artifacts.
+        --    Effective lag = only ~77ms. Scene cuts reach 90% convergence in ~6 frames (200ms).
         local sample_filter = ""
         if is_letterbox then
             -- Sample top 18% & bottom 18% bands, merge together, exclude center
@@ -171,7 +171,7 @@ local function apply_effect()
         end
 
         vf_str = string.format(
-            "lavfi=[split[fg][bg]; [bg]%s,format=yuv420p16le,hqdn3d=0:0:15:15,tmix=frames=5:weights='1 2 3 4 5',format=yuv420p,eq=contrast=0.95:brightness=-0.06:saturation=1.20:gamma=0.88,scale=%d:%d:flags=neighbor[bg_solid]; [bg_solid][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
+            "lavfi=[split[fg][bg]; [bg]%s,format=yuv420p16le,tmix=frames=20:weights='1 2 2 3 5 7 10 14 20 28 40 58 82 118 168 240 343 490 700 1000',format=yuv420p,eq=contrast=0.95:brightness=-0.06:saturation=1.20:gamma=0.88,scale=%d:%d:flags=neighbor[bg_solid]; [bg_solid][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
             sample_filter, target_w, target_h
         )
     elseif mode_id == "ambient" then
