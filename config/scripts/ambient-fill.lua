@@ -46,7 +46,7 @@ local last_applied_vf = ""
 -- Solid Color look-ahead: [fg] is delayed SOLID_LOOKAHEAD frames so the gaussian ambient
 -- is centered symmetrically on the current displayed frame (past + future frames blended).
 -- audio-delay is compensated automatically when solid mode is active.
-local SOLID_LOOKAHEAD = 3        -- video delay frames (~100ms at 30fps, ~67ms at 45fps)
+local SOLID_LOOKAHEAD = 7        -- video delay frames (~233ms at 30fps, ~156ms at 45fps)
 local original_audio_delay = nil -- saved audio-delay before solid mode compensation
 
 local function get_screen_aspect()
@@ -195,8 +195,11 @@ local function apply_effect()
         local base_delay = tonumber(original_audio_delay) or 0
         mp.set_property("audio-delay", tostring(base_delay + SOLID_LOOKAHEAD / fps))
 
+        -- 3. Symmetric Gaussian tmix (M=2L+1=15, sigma=4): weights centered at position 7
+        --    '216 325 458 607 755 883 969 1000 969 883 755 607 458 325 216'
+        --    Crossfade spans ±2*sigma=±8 frames = ±267ms at 30fps. Ultra-smooth, cinematic.
         vf_str = string.format(
-            "lavfi=[split[fg_raw][bg]; [fg_raw]tpad=start=%d:start_mode=clone[fg]; [bg]%s,format=yuv420p16le,tmix=frames=7:weights='325 607 883 1000 883 607 325',format=yuv420p,scale=%d:%d:flags=neighbor[bg_solid]; [bg_solid][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
+            "lavfi=[split[fg_raw][bg]; [fg_raw]tpad=start=%d:start_mode=clone[fg]; [bg]%s,format=yuv420p16le,tmix=frames=15:weights='216 325 458 607 755 883 969 1000 969 883 755 607 458 325 216',format=yuv420p,scale=%d:%d:flags=neighbor[bg_solid]; [bg_solid][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
             SOLID_LOOKAHEAD, sample_filter, target_w, target_h
         )
     elseif mode_id == "ambient" then
