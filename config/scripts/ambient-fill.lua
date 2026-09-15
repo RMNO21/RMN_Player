@@ -221,14 +221,17 @@ local function apply_effect()
         -- 3. Pure Chromatic Fidelity: Contrast operates on Luminance (YUV), completely locking HUE so skin tones never turn orange.
         -- 4. Planar GBRP Blur: gblur with sigma=4 on GBRP preserves full chromatic fidelity without chroma stripping.
         -- 5. Perfect Spatial Alignment & Deband: area downscale + bicubic upscale for dead-center sub-pixel matching.
+        -- Natural Optical Luminance Falloff (True Cinema Ambilight):
+        -- 1. Balanced 1.15 contrast ensures vivid, clear illumination without dark clipping.
+        -- 2. Quadratic Luminance Decay: (1.0 - 0.65*d^2) smoothly dissolves outer screen edges towards darkness.
+        -- 3. Planar GBRP diffusion + bicubic upscale guarantees velvety gradient transition.
         local base_scale = is_letterbox and "32:18" or "18:32"
         local dist_expr = is_letterbox
             and "abs(2*Y - (H-1))/(H-1)"
             or  "abs(2*X - (W-1))/(W-1)"
-        local contrast_expr = string.format("(2.0 - 1.9*pow(%s, 2))", dist_expr)
         local geq_expr = string.format(
-            "lum='clip(128 + %s*(lum(X,Y)-128), 0, 255)':cb='cb(X,Y)':cr='cr(X,Y)'",
-            contrast_expr
+            "lum='clip((128 + 1.15*(lum(X,Y)-128)) * (1.0 - 0.65*pow(%s, 2)), 0, 255)':cb='cb(X,Y)':cr='cr(X,Y)'",
+            dist_expr
         )
         vf_str = string.format(
             "lavfi=[split[fg][bg]; [bg]scale=%s:flags=area,format=gbrp,gblur=sigma=4:steps=2,format=yuv420p,geq=%s,tmix=frames=3:weights='1 2 4',scale=%d:%d:flags=bicubic,gradfun=strength=5.0:radius=16,eq=saturation=1.20[bg_glow]; [bg_glow][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
