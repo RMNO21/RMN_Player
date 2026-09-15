@@ -152,15 +152,24 @@ local function apply_effect()
     local mode_id = MODES[current_mode].id
 
     if mode_id == "solid" then
-        -- Adaptive Dual-Speed Solid Color (Rapid on Scene Cuts, Buttery-Smooth on Near Tones):
-        -- 1. Sub-samples frame to 32x18 and integrates to 1x1 pixel with area averaging.
-        -- 2. Adaptive Temporal Averaging (atadenoise, s=45):
-        --    - Near colors (diff <= 0.12): Blends across 45 frames for an ultra-calm, peaceful flow (~1.8s).
-        --    - Distant colors (diff > 0.12): Discards history instantly on scene cuts for an agile ~0.2s switch.
-        -- 3. 6-frame micro-smoothing (tmix) avoids sharp strobe while preserving rapid response.
+        -- Intelligent Peripheral-Aware Solid Ambient:
+        -- 1. Peripheral Sampling: Crops border bands (top/bottom or left/right), completely ignoring 
+        --    central 70% where actors move. Eliminates walking-induced flicker at the physical source.
+        -- 2. IIR Adaptive Temporal Filter (hqdn3d): Continuous exponential tracking for smooth light drifts, 
+        --    with instant 1-frame accumulator flush on scene cuts (zero lag).
+        -- 3. Weighted Micro-Smoothing (tmix 1:2:4): Zero-latency softening of sharp cut edges.
+        local sample_filter = ""
+        if is_letterbox then
+            -- Sample top 18% & bottom 18% bands, merge together, exclude center
+            sample_filter = "scale=32:18:flags=area,split[t_in][b_in]; [t_in]crop=iw:3:0:0[top]; [b_in]crop=iw:3:0:ih-3[bot]; [top][bot]vstack,scale=1:1:flags=area"
+        else
+            -- Sample left 18% & right 18% bands, merge together, exclude center
+            sample_filter = "scale=18:32:flags=area,split[l_in][r_in]; [l_in]crop=3:ih:0:0[left]; [r_in]crop=3:ih:iw-3:0[right]; [left][right]hstack,scale=1:1:flags=area"
+        end
+
         vf_str = string.format(
-            "lavfi=[split[fg][bg]; [bg]scale=32:18:flags=fast_bilinear,scale=1:1:flags=area,format=yuv420p,atadenoise=0a=0.12:0b=0.25:1a=0.12:1b=0.25:2a=0.12:2b=0.25:s=45:a=s,tmix=frames=6,eq=contrast=0.95:brightness=-0.06:saturation=1.20:gamma=0.88,scale=%d:%d:flags=neighbor[bg_solid]; [bg_solid][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
-            target_w, target_h
+            "lavfi=[split[fg][bg]; [bg]%s,format=yuv420p,hqdn3d=0:0:16:16,tmix=frames=3:weights='1 2 4',eq=contrast=0.95:brightness=-0.06:saturation=1.20:gamma=0.88,scale=%d:%d:flags=neighbor[bg_solid]; [bg_solid][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
+            sample_filter, target_w, target_h
         )
     elseif mode_id == "ambient" then
         -- Progressive Edge Contrast Ambilight (Zero Artificial Black Borders, Pure Luminance Preservation):
