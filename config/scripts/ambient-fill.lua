@@ -1,7 +1,7 @@
 -- ambient-fill.lua: Dynamic Fullscreen Background Fill & Ambient Glow
--- Modes: Normal (Off) -> Blurred Background -> Ambient Glow
+-- Modes: Normal (Off) -> Solid Color -> Ambient Glow
 -- Automatically detects screen resolution via Win32 API and activates ONLY in Fullscreen mode.
--- Blurred Background Mode: Deep Dreamy Proportional Full-Frame Blur (Heavy 2D Diffusion, Zero 1D Zoom, Low CPU).
+-- Solid Color Mode: Ultra-lightweight adaptive solid color with smooth temporal transitions.
 -- Ambient Glow Mode: Universal Symmetric Ambilight with 4% edge scan, multi-pass diffusion, temporal LERP, and power gamma.
 
 local mp = require("mp")
@@ -35,10 +35,10 @@ if ffi_loaded then
     end)
 end
 
--- Modes: 1 = "off", 2 = "blur", 3 = "ambient"
+-- Modes: 1 = "off", 2 = "solid", 3 = "ambient"
 local MODES = {
     { id = "off", label = "Normal (Off)" },
-    { id = "blur", label = "Blurred Background" },
+    { id = "solid", label = "Solid Color" },
     { id = "ambient", label = "Ambient Glow" },
 }
 local current_mode = 1 -- default off
@@ -138,56 +138,50 @@ local function apply_effect()
         -- Letterbox (bars on top/bottom, e.g. 16:9 on 16:10):
         target_w = vw
         target_h = math.floor((vw / target_aspect) / 2) * 2
-        bar_size = math.floor((target_h - vh) / 2)
+        bar_size = math.floor((target_h - vh) / 4) * 2
+        target_h = vh + bar_size * 2
     else
         -- Pillarbox (bars on left/right, e.g. 9:16 or 4:3 on 16:9):
         target_w = math.floor((vh * target_aspect) / 2) * 2
         target_h = vh
-        bar_size = math.floor((target_w - vw) / 2)
+        bar_size = math.floor((target_w - vw) / 4) * 2
+        target_w = vw + bar_size * 2
     end
 
     local vf_str = ""
     local mode_id = MODES[current_mode].id
 
-    if mode_id == "blur" then
-        -- Deep Dreamy Proportional Full-Frame Blur:
-        -- 1. Samples full frame proportionally with zero 1D zoom artifacts.
-        -- 2. Staged at 160x100 with heavy 2D multi-pass box diffusion (boxblur=24:5).
-        -- 3. Upscaled smoothly with bicubic spline reconstruction and 12% dimming.
-        local staging_w = math.floor(target_w / 8 / 2) * 2
-        local staging_h = math.floor(target_h / 8 / 2) * 2
-        if staging_w < 120 then staging_w = 160 end
-        if staging_h < 80 then staging_h = 100 end
-
+    if mode_id == "solid" then
+        -- Adaptive Dual-Speed Solid Color (Rapid on Scene Cuts, Buttery-Smooth on Near Tones):
+        -- 1. Sub-samples frame to 32x18 and integrates to 1x1 pixel with area averaging.
+        -- 2. Adaptive Temporal Averaging (atadenoise, s=45):
+        --    - Near colors (diff <= 0.12): Blends across 45 frames for an ultra-calm, peaceful flow (~1.8s).
+        --    - Distant colors (diff > 0.12): Discards history instantly on scene cuts for an agile ~0.2s switch.
+        -- 3. 6-frame micro-smoothing (tmix) avoids sharp strobe while preserving rapid response.
         vf_str = string.format(
-            "lavfi=[split[fg][bg]; [bg]scale=%d:%d:flags=fast_bilinear,boxblur=24:5,scale=%d:%d:flags=bicubic,eq=brightness=-0.12:contrast=0.92[bg_blur]; [bg_blur][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
-            staging_w, staging_h, target_w, target_h
+            "lavfi=[split[fg][bg]; [bg]scale=32:18:flags=fast_bilinear,scale=1:1:flags=area,format=yuv420p,atadenoise=0a=0.12:0b=0.25:1a=0.12:1b=0.25:2a=0.12:2b=0.25:s=45:a=s,tmix=frames=6,eq=contrast=0.95:brightness=-0.06:saturation=1.20:gamma=0.88,scale=%d:%d:flags=neighbor[bg_solid]; [bg_solid][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
+            target_w, target_h
         )
     elseif mode_id == "ambient" then
-        -- Universal Symmetric Ambilight Pipeline:
-        -- 1. Symmetric 4% Edge Sampling: Identical mathematical input depth.
-        -- 2. Anti-Aliased Staging with 5-Frame Temporal Smoothing: tmix=frames=5:weights='1 2 3 4 5'.
-        -- 3. Dynamic Power Gamma & Saturation Boost: eq=contrast=1.45:brightness=-0.03:saturation=1.25:gamma=0.82.
-        -- 4. Symmetrical Quadratic Falloff: I(d) = I0 * (1 - d/d_max)^2 smoothly dissolving into pure #000000.
-        if is_letterbox then
-            local crop_d = math.max(12, math.floor(vh * 0.04))
-            vf_str = string.format(
-                "lavfi=[split=3[fg][s_top][s_bot]; [fg]pad=%d:%d:0:%d:black[base]; [s_top]crop=%d:%d:0:0,scale=48:4:flags=area,avgblur=sizeX=30:sizeY=2,tmix=frames=5:weights='1 2 3 4 5',eq=contrast=1.45:brightness=-0.03:saturation=1.25:gamma=0.82,scale=%d:%d:flags=bicubic[top_glow]; [s_bot]crop=%d:%d:0:%d,scale=48:4:flags=area,avgblur=sizeX=30:sizeY=2,tmix=frames=5:weights='1 2 3 4 5',eq=contrast=1.45:brightness=-0.03:saturation=1.25:gamma=0.82,scale=%d:%d:flags=bicubic[bot_glow]; [base][top_glow]overlay=0:0:eof_action=pass:repeatlast=0[b1]; [b1][bot_glow]overlay=0:%d:eof_action=pass:repeatlast=0,setsar=1]",
-                target_w, target_h, bar_size,
-                vw, crop_d, vw, bar_size,
-                vw, crop_d, vh - crop_d, vw, bar_size,
-                target_h - bar_size
-            )
-        else
-            local crop_d = math.max(12, math.floor(vw * 0.04))
-            vf_str = string.format(
-                "lavfi=[split=3[fg][s_lft][s_rgt]; [fg]pad=%d:%d:%d:0:black[base]; [s_lft]crop=%d:%d:0:0,scale=4:48:flags=area,avgblur=sizeX=2:sizeY=30,tmix=frames=5:weights='1 2 3 4 5',eq=contrast=1.45:brightness=-0.03:saturation=1.25:gamma=0.82,scale=%d:%d:flags=bicubic[lft_glow]; [s_rgt]crop=%d:%d:%d:0,scale=4:48:flags=area,avgblur=sizeX=2:sizeY=30,tmix=frames=5:weights='1 2 3 4 5',eq=contrast=1.45:brightness=-0.03:saturation=1.25:gamma=0.82,scale=%d:%d:flags=bicubic[rgt_glow]; [base][lft_glow]overlay=0:0:eof_action=pass:repeatlast=0[b1]; [b1][rgt_glow]overlay=%d:0:eof_action=pass:repeatlast=0,setsar=1]",
-                target_w, target_h, bar_size,
-                crop_d, vh, bar_size, vh,
-                crop_d, vh, vw - crop_d, bar_size, vh,
-                target_w - bar_size
-            )
-        end
+        -- Progressive Edge Contrast Ambilight (Zero Artificial Black Borders, Pure Luminance Preservation):
+        -- 1. Zero Artificial Black Borders: No forced black vignette. White scenes stay 100% pure white, black scenes stay pure black.
+        -- 2. Variable Edge Contrast: Contrast increases progressively from 1.1 near video to 5.0 at the outer screen edges.
+        -- 3. Pure Chromatic Fidelity: Contrast operates on Luminance (YUV), completely locking HUE so skin tones never turn orange.
+        -- 4. Planar GBRP Blur: gblur with sigma=4 on GBRP preserves full chromatic fidelity without chroma stripping.
+        -- 5. Perfect Spatial Alignment & Deband: area downscale + bicubic upscale for dead-center sub-pixel matching.
+        local base_scale = is_letterbox and "32:18" or "18:32"
+        local dist_expr = is_letterbox
+            and "abs(2*Y - (H-1))/(H-1)"
+            or  "abs(2*X - (W-1))/(W-1)"
+        local contrast_expr = string.format("(1.1 + 3.9*pow(%s, 2))", dist_expr)
+        local geq_expr = string.format(
+            "lum='clip(128 + %s*(lum(X,Y)-128), 0, 255)':cb='cb(X,Y)':cr='cr(X,Y)'",
+            contrast_expr
+        )
+        vf_str = string.format(
+            "lavfi=[split[fg][bg]; [bg]scale=%s:flags=area,format=gbrp,gblur=sigma=4:steps=2,format=yuv420p,geq=%s,tmix=frames=3:weights='1 2 4',scale=%d:%d:flags=bicubic,gradfun=strength=5.0:radius=16,eq=saturation=1.20[bg_glow]; [bg_glow][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
+            base_scale, geq_expr, target_w, target_h
+        )
     end
 
     if vf_str == last_applied_vf then
@@ -197,6 +191,8 @@ local function apply_effect()
     if vf_str ~= "" then
         mp.set_property("glsl-shaders", "")
         mp.set_property("hwdec", "no")
+        mp.set_property("video-align-x", "0")
+        mp.set_property("video-align-y", "0")
         mp.set_property("vf", vf_str)
         mp.set_property("video-aspect-override", "-1")
         last_applied_vf = vf_str
