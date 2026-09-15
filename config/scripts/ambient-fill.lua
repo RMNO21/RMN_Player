@@ -221,9 +221,10 @@ local function apply_effect()
         --    while bright highlights stay bright and midtones do not get falsely lifted.
         -- 3. Crisp Contrast (1.15) & Rich Saturation (1.20) for vibrant, cinematic Ambilight.
         -- 4. Zero Artificial Vignette: No fake bezel shadows or edge clipping.
+        -- 5. Heavy-Duty Debanding: gradfun with strength=14.0 and radius=32 completely irons out color bands.
         local base_scale = is_letterbox and "32:18" or "18:32"
         vf_str = string.format(
-            "lavfi=[split[fg][bg]; [bg]scale=%s:flags=area,format=gbrp,gblur=sigma=4:steps=2,format=yuv420p,tmix=frames=3:weights='1 2 4',scale=%d:%d:flags=bicubic,gradfun=strength=5.0:radius=16,eq=gamma=0.78:contrast=1.15:saturation=1.20[bg_glow]; [bg_glow][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
+            "lavfi=[split[fg][bg]; [bg]scale=%s:flags=area,format=gbrp,gblur=sigma=4:steps=2,format=yuv420p,tmix=frames=3:weights='1 2 4',scale=%d:%d:flags=bicubic,gradfun=strength=14.0:radius=32,eq=gamma=0.78:contrast=1.15:saturation=1.20[bg_glow]; [bg_glow][fg]overlay=(W-w)/2:(H-h)/2:eof_action=pass:repeatlast=0,setsar=1]",
             base_scale, target_w, target_h
         )
     end
