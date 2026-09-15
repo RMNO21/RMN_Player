@@ -1,11 +1,11 @@
 {
   "name": "RMN-Player",
-  "version": "1.1.0",
-  "version_code": 110,
-  "release_date": "2026-09-12",
+  "version": "1.1.1",
+  "version_code": 111,
+  "release_date": "2026-09-16",
   "channel": "stable",
   "repository": "RMNO21/RMN_Player",
-  "changelog": "Added integrated update checker ('Check and update latest version') in context menu, automated background updates, and performance optimizations.",
+  "changelog": "Progressive edge contrast up to 5.0 on luminance, zero artificial black borders, sub-pixel area spatial alignment & debanding.",
   "html_url": "https://github.com/RMNO21/RMN_Player",
   "download_url": "https://github.com/RMNO21/RMN_Player/archive/refs/heads/main.zip"
 }
