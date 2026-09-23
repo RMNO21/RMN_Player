@@ -56,6 +56,8 @@ function Controls:init_options()
 		shuffle = 'toggle:shuffle:shuffle?' .. t('Shuffle'),
 		autoload = 'toggle:hdr_auto:autoload@uosc?' .. t('Autoload'),
 		fullscreen = 'cycle:crop_free:fullscreen:no/yes=fullscreen_exit!?' .. t('Fullscreen'),
+		ontop = 'cycle:push_pin:ontop:no/yes!?' .. t('Always on Top'),
+		pin = 'cycle:push_pin:ontop:no/yes!?' .. t('Always on Top'),
 	}
 
 	-- Parse out disposition/config pairs
