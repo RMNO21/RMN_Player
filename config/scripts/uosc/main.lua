@@ -366,6 +366,7 @@ function create_default_menu_items()
 						{title = t('Toggle Deinterlace'), value = 'cycle deinterlace'},
 					},
 				},
+				{title = t('Pin Window (Always on Top)'), value = 'cycle ontop'},
 				{title = t('Audio devices'), value = 'script-binding uosc/audio-device'},
 				{title = t('Editions'), value = 'script-binding uosc/editions'},
 				{title = t('Screenshot'), value = 'async screenshot'},
