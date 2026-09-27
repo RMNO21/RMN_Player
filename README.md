@@ -6,6 +6,24 @@ A high-performance custom media player for Windows with OLED-tuned rendering, in
 
 **100% Offline • Zero Dependencies • Native Windows Integration**
 
+<br/>
+
+<p align="center">
+  <a href="https://github.com/RMNO21/RMN_Player/releases/latest">
+    <img src="https://img.shields.io/github/v/release/RMNO21/RMN_Player?style=for-the-badge&color=007ACC&logo=github" alt="Latest Release" />
+  </a>
+  <a href="https://github.com/FurqanHun/awesome-mpv#user-configuration">
+    <img src="https://img.shields.io/badge/Featured%20in-Awesome--mpv-brightgreen?style=for-the-badge&logo=awesome" alt="Featured in Awesome-mpv" />
+  </a>
+  <img src="https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011-0078D6?style=for-the-badge&logo=windows" alt="Windows Platform" />
+  <a href="https://github.com/RMNO21/RMN_Player/stargazers">
+    <img src="https://img.shields.io/github/stars/RMNO21/RMN_Player?style=for-the-badge&color=gold" alt="Stars" />
+  </a>
+  <a href="https://github.com/RMNO21/RMN_Player/blob/main/LICENSE">
+    <img src="https://img.shields.io/github/license/RMNO21/RMN_Player?style=for-the-badge&color=blue" alt="License" />
+  </a>
+</p>
+
 </div>
 
 ---
