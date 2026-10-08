@@ -1,11 +1,11 @@
 {
   "name": "RMN-Player",
-  "version": "1.1.5",
-  "version_code": 115,
-  "release_date": "2026-09-23",
+  "version": "1.1.6",
+  "version_code": 116,
+  "release_date": "2026-10-08",
   "channel": "stable",
   "repository": "RMNO21/RMN_Player",
-  "changelog": "UI: Added 'Always on Top' pin button to control bar and menu.",
+  "changelog": "UI: Added playback speed slider on UI controls bar; added Subtitle Appearance & Style menu (background box, fonts, shadow, outline, size, color).",
   "html_url": "https://github.com/RMNO21/RMN_Player",
   "download_url": "https://github.com/RMNO21/RMN_Player/archive/refs/heads/main.zip"
 }
