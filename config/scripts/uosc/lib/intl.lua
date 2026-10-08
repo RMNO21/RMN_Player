@@ -47,7 +47,13 @@ function t(text, a)
 	local key = text
 	if a then key = key .. '|' .. a end
 	if cache[key] then return cache[key] end
-	cache[key] = string.format(locale[text] or text, a or '')
+	local pattern = locale[text] or text
+	if a ~= nil then
+		local ok, formatted = pcall(string.format, pattern, a)
+		cache[key] = ok and formatted or pattern
+	else
+		cache[key] = pattern
+	end
 	return cache[key]
 end
 
