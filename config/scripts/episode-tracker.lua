@@ -570,6 +570,16 @@ end
 
 -- ── Core tracking ──────────────────────────────────────────────────────────
 
+local function is_valid_media_path(path)
+    if not path or path == "" then return false end
+    local lower = path:lower()
+    if lower:match("^avdevice://") or lower:match("^null://") or lower:match("^lavfi:") or
+       lower:match("^memory://") or lower:match("^edl://") or lower:match("^hex://") then
+        return false
+    end
+    return true
+end
+
 local function get_db_entry(key)
     if not db.episodes[key] then
         db.episodes[key] = { watched = false, position = 0, duration = 0 }
@@ -580,7 +590,7 @@ end
 local function track_playback()
     if mp.get_property_bool("seeking", false) then return end
     local raw_path = current_path or mp.get_property("path", "")
-    if not raw_path or raw_path == "" then return end
+    if not is_valid_media_path(raw_path) then return end
 
     local path = raw_path:gsub("\\", "/")
     local _, filename, parent, folder = parse_path(path)
@@ -633,7 +643,7 @@ local function track_playback()
 end
 
 local function save_progress_for(raw_path)
-    if not raw_path or raw_path == "" then return end
+    if not is_valid_media_path(raw_path) then return end
     local path = raw_path:gsub("\\", "/")
     local key = path:lower()
     local entry = db.episodes[key]
@@ -658,7 +668,7 @@ end
 
 local function on_file_loaded()
     local raw_new = mp.get_property("path", "")
-    if not raw_new or raw_new == "" then return end
+    if not is_valid_media_path(raw_new) then return end
     local new_path = raw_new:gsub("\\", "/")
 
     if current_path and current_path ~= new_path then
@@ -830,11 +840,35 @@ end
 local function cmd_open_last()
     local target, pos
 
-    if db.last_played and db.last_played.path and db.last_played.path ~= "" then
-        target = db.last_played.path
-        pos = db.last_played.position or 0
+    if db.last_played and db.last_played.path and is_valid_media_path(db.last_played.path) then
+        local stat = utils.file_info(db.last_played.path)
+        if stat then
+            target = db.last_played.path
+            pos = db.last_played.position or 0
+        end
     end
 
+    -- If db.last_played is invalid or file no longer exists, scan db.episodes for the newest existing file
+    if not target or target == "" then
+        local newest_time = 0
+        if db.episodes then
+            for fpath, ep in pairs(db.episodes) do
+                if is_valid_media_path(fpath) then
+                    local t = ep.last_watch or 0
+                    if t > newest_time then
+                        local stat = utils.file_info(fpath)
+                        if stat then
+                            newest_time = t
+                            target = fpath
+                            pos = ep.position or 0
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- Fallback to watch_later directory
     if not target or target == "" then
         local wl_dir = get_config_dir() .. "/watch_later"
         local stat = utils.file_info(wl_dir)
@@ -857,9 +891,12 @@ local function cmd_open_last()
                         f:close()
                         local p = content:match("path=(.+)%s*$")
                         local s = content:match("start=(%d+%.?%d*)")
-                        if p and p ~= "" then
-                            target = p
-                            pos = s and tonumber(s) or 0
+                        if p and p ~= "" and is_valid_media_path(p) then
+                            local fstat = utils.file_info(p)
+                            if fstat then
+                                target = p
+                                pos = s and tonumber(s) or 0
+                            end
                         end
                     end
                 end
@@ -868,13 +905,11 @@ local function cmd_open_last()
     end
 
     if not target or target == "" then
-        mp.osd_message("No last played file found", 3)
         return
     end
 
     local stat = utils.file_info(target)
     if not stat then
-        mp.osd_message("File not found: " .. (target:match("([^/\\]+)$") or target), 3)
         return
     end
 

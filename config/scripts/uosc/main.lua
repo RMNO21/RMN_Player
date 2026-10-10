@@ -303,63 +303,63 @@ update_config()
 local function get_subtitle_style_items()
 	return {
 		{
-			title = 'Background Box (بک‌گراند)',
+			title = 'Background Box',
 			items = {
-				{title = 'Off (بدون کادر / شفاف)', value = 'set sub-border-style outline-and-shadow; set sub-back-color "#00000000"; show-text "Subtitle Box: Off"'},
-				{title = 'Semi-Transparent (کادر مشکی نیمه‌شفاف 50%)', value = 'set sub-border-style background-box; set sub-back-color "#80000000"; show-text "Subtitle Box: Semi-Transparent (50%)"'},
-				{title = 'Dark (کادر مشکی تیره 80%)', value = 'set sub-border-style background-box; set sub-back-color "#CC000000"; show-text "Subtitle Box: Dark (80%)"'},
-				{title = 'Solid Black (کادر مشکی مات 100%)', value = 'set sub-border-style background-box; set sub-back-color "#FF000000"; show-text "Subtitle Box: Solid Black (100%)"'},
-				{title = 'Compact Opaque (کادر فشرده مات)', value = 'set sub-border-style opaque-box; set sub-back-color "#A0000000"; show-text "Subtitle Box: Compact Opaque"'},
+				{title = 'Off (Transparent)', value = 'set sub-border-style outline-and-shadow; set sub-back-color "#00000000"; show-text "Subtitle Box: Off"'},
+				{title = 'Semi-Transparent (50%)', value = 'set sub-border-style background-box; set sub-back-color "#80000000"; show-text "Subtitle Box: Semi-Transparent (50%)"'},
+				{title = 'Dark (80%)', value = 'set sub-border-style background-box; set sub-back-color "#CC000000"; show-text "Subtitle Box: Dark (80%)"'},
+				{title = 'Solid Black (100%)', value = 'set sub-border-style background-box; set sub-back-color "#FF000000"; show-text "Subtitle Box: Solid Black (100%)"'},
+				{title = 'Compact Opaque', value = 'set sub-border-style opaque-box; set sub-back-color "#A0000000"; show-text "Subtitle Box: Compact Opaque"'},
 			},
 		},
 		{
-			title = 'Font Family (فونت زیرنویس)',
+			title = 'Font Family',
 			items = {
-				{title = 'Vazirmatn (وزیرمتن)', value = 'set sub-font "Vazirmatn"; show-text "Subtitle Font: Vazirmatn"'},
-				{title = 'IRANSans (ایران‌سنس)', value = 'set sub-font "IRANSans"; show-text "Subtitle Font: IRANSans"'},
-				{title = 'Shabnam (شبنم)', value = 'set sub-font "Shabnam"; show-text "Subtitle Font: Shabnam"'},
-				{title = 'Sahel (ساحل)', value = 'set sub-font "Sahel"; show-text "Subtitle Font: Sahel"'},
-				{title = 'Segoe UI (ویندوز)', value = 'set sub-font "Segoe UI"; show-text "Subtitle Font: Segoe UI"'},
-				{title = 'Tahoma (تاهوما)', value = 'set sub-font "Tahoma"; show-text "Subtitle Font: Tahoma"'},
+				{title = 'Vazirmatn', value = 'set sub-font "Vazirmatn"; show-text "Subtitle Font: Vazirmatn"'},
+				{title = 'IRANSans', value = 'set sub-font "IRANSans"; show-text "Subtitle Font: IRANSans"'},
+				{title = 'Shabnam', value = 'set sub-font "Shabnam"; show-text "Subtitle Font: Shabnam"'},
+				{title = 'Sahel', value = 'set sub-font "Sahel"; show-text "Subtitle Font: Sahel"'},
+				{title = 'Segoe UI', value = 'set sub-font "Segoe UI"; show-text "Subtitle Font: Segoe UI"'},
+				{title = 'Tahoma', value = 'set sub-font "Tahoma"; show-text "Subtitle Font: Tahoma"'},
 				{title = 'Arial', value = 'set sub-font "Arial"; show-text "Subtitle Font: Arial"'},
 				{title = 'Trebuchet MS', value = 'set sub-font "Trebuchet MS"; show-text "Subtitle Font: Trebuchet MS"'},
 				{title = 'Consolas (Monospace)', value = 'set sub-font "Consolas"; show-text "Subtitle Font: Consolas"'},
 				{separator = true},
-				{title = 'System Default (پیش‌فرض سیستم)', value = 'set sub-font "sans-serif"; show-text "Subtitle Font: Default"'},
+				{title = 'System Default', value = 'set sub-font "sans-serif"; show-text "Subtitle Font: Default"'},
 			},
 		},
 		{
-			title = 'Shadow & Outline (سایه و خط دور متن)',
+			title = 'Shadow & Outline',
 			items = {
 				{
-					title = 'Shadow (سایه متن)',
+					title = 'Shadow Depth',
 					items = {
-						{title = 'Off (بدون سایه)', value = 'set sub-shadow-offset 0; show-text "Subtitle Shadow: Off"'},
-						{title = 'Soft (سایه ملایم 2px)', value = 'set sub-shadow-offset 2; set sub-shadow-color "#000000"; show-text "Subtitle Shadow: Soft (2px)"'},
-						{title = 'Medium (سایه متوسط 3.5px)', value = 'set sub-shadow-offset 3.5; set sub-shadow-color "#000000"; show-text "Subtitle Shadow: Medium (3.5px)"'},
-						{title = 'Strong (سایه قوی 5px)', value = 'set sub-shadow-offset 5; set sub-shadow-color "#000000"; show-text "Subtitle Shadow: Strong (5px)"'},
+						{title = 'Off (No Shadow)', value = 'set sub-shadow-offset 0; show-text "Subtitle Shadow: Off"'},
+						{title = 'Soft (2px)', value = 'set sub-shadow-offset 2; set sub-shadow-color "#000000"; show-text "Subtitle Shadow: Soft (2px)"'},
+						{title = 'Medium (3.5px)', value = 'set sub-shadow-offset 3.5; set sub-shadow-color "#000000"; show-text "Subtitle Shadow: Medium (3.5px)"'},
+						{title = 'Strong (5px)', value = 'set sub-shadow-offset 5; set sub-shadow-color "#000000"; show-text "Subtitle Shadow: Strong (5px)"'},
 					},
 				},
 				{
-					title = 'Outline / Border (کادر دور متن)',
+					title = 'Outline Thickness',
 					items = {
-						{title = 'None (بدون خط دور)', value = 'set sub-border-size 0; show-text "Subtitle Outline: None"'},
-						{title = 'Thin (خط باریک 1.5px)', value = 'set sub-border-size 1.5; set sub-border-color "#000000"; show-text "Subtitle Outline: Thin (1.5px)"'},
-						{title = 'Medium (خط متوسط 3px - پیش‌فرض)', value = 'set sub-border-size 3; set sub-border-color "#000000"; show-text "Subtitle Outline: Medium (3px)"'},
-						{title = 'Thick (خط ضخیم 4.5px)', value = 'set sub-border-size 4.5; set sub-border-color "#000000"; show-text "Subtitle Outline: Thick (4.5px)"'},
-						{title = 'Extra Thick (خیلی ضخیم 6px)', value = 'set sub-border-size 6; set sub-border-color "#000000"; show-text "Subtitle Outline: Extra Thick (6px)"'},
+						{title = 'None (0px)', value = 'set sub-border-size 0; show-text "Subtitle Outline: None"'},
+						{title = 'Thin (1.5px)', value = 'set sub-border-size 1.5; set sub-border-color "#000000"; show-text "Subtitle Outline: Thin (1.5px)"'},
+						{title = 'Medium (3px - Default)', value = 'set sub-border-size 3; set sub-border-color "#000000"; show-text "Subtitle Outline: Medium (3px)"'},
+						{title = 'Thick (4.5px)', value = 'set sub-border-size 4.5; set sub-border-color "#000000"; show-text "Subtitle Outline: Thick (4.5px)"'},
+						{title = 'Extra Thick (6px)', value = 'set sub-border-size 6; set sub-border-color "#000000"; show-text "Subtitle Outline: Extra Thick (6px)"'},
 					},
 				},
 			},
 		},
 		{
-			title = 'Text Size (سایز زیرنویس)',
+			title = 'Text Size',
 			items = {
-				{title = 'Small (کوچک 75%)', value = 'set sub-scale 0.75; show-text "Subtitle Size: 75%"'},
-				{title = 'Normal (متوسط 100% - پیش‌فرض)', value = 'set sub-scale 1.0; show-text "Subtitle Size: 100%"'},
-				{title = 'Large (بزرگ 125%)', value = 'set sub-scale 1.25; show-text "Subtitle Size: 125%"'},
-				{title = 'Extra Large (خیلی بزرگ 150%)', value = 'set sub-scale 1.5; show-text "Subtitle Size: 150%"'},
-				{title = 'Huge (بسیار بزرگ 175%)', value = 'set sub-scale 1.75; show-text "Subtitle Size: 175%"'},
+				{title = 'Small (75%)', value = 'set sub-scale 0.75; show-text "Subtitle Size: 75%"'},
+				{title = 'Normal (100% - Default)', value = 'set sub-scale 1.0; show-text "Subtitle Size: 100%"'},
+				{title = 'Large (125%)', value = 'set sub-scale 1.25; show-text "Subtitle Size: 125%"'},
+				{title = 'Extra Large (150%)', value = 'set sub-scale 1.5; show-text "Subtitle Size: 150%"'},
+				{title = 'Huge (175%)', value = 'set sub-scale 1.75; show-text "Subtitle Size: 175%"'},
 				{separator = true},
 				{title = 'Increase Size (+10%)', value = 'add sub-scale 0.1; show-text "Subtitle Size: +10%"'},
 				{title = 'Decrease Size (-10%)', value = 'add sub-scale -0.1; show-text "Subtitle Size: -10%"'},
@@ -367,24 +367,24 @@ local function get_subtitle_style_items()
 			},
 		},
 		{
-			title = 'Text Color (رنگ متن)',
+			title = 'Text Color',
 			items = {
-				{title = 'White (سفید خالص - پیش‌فرض)', value = 'set sub-color "#FFFFFF"; show-text "Subtitle Color: White"'},
-				{title = 'Warm White / Cream (سفید گرم)', value = 'set sub-color "#FFF8E7"; show-text "Subtitle Color: Warm White"'},
-				{title = 'Yellow (زرد سینمایی)', value = 'set sub-color "#FFFF00"; show-text "Subtitle Color: Yellow"'},
-				{title = 'Soft Gold (طلایی ملایم)', value = 'set sub-color "#FFD700"; show-text "Subtitle Color: Gold"'},
-				{title = 'Cyan (فیروزه‌ای روشن)', value = 'set sub-color "#00FFFF"; show-text "Subtitle Color: Cyan"'},
-				{title = 'Light Green (سبز ملایم)', value = 'set sub-color "#90EE90"; show-text "Subtitle Color: Light Green"'},
-				{title = 'Light Gray (خاکستری روشن)', value = 'set sub-color "#D3D3D3"; show-text "Subtitle Color: Light Gray"'},
+				{title = 'White (Default)', value = 'set sub-color "#FFFFFF"; show-text "Subtitle Color: White"'},
+				{title = 'Warm White / Cream', value = 'set sub-color "#FFF8E7"; show-text "Subtitle Color: Warm White"'},
+				{title = 'Yellow (Cinema)', value = 'set sub-color "#FFFF00"; show-text "Subtitle Color: Yellow"'},
+				{title = 'Gold', value = 'set sub-color "#FFD700"; show-text "Subtitle Color: Gold"'},
+				{title = 'Cyan', value = 'set sub-color "#00FFFF"; show-text "Subtitle Color: Cyan"'},
+				{title = 'Light Green', value = 'set sub-color "#90EE90"; show-text "Subtitle Color: Light Green"'},
+				{title = 'Light Gray', value = 'set sub-color "#D3D3D3"; show-text "Subtitle Color: Light Gray"'},
 			},
 		},
 		{separator = true},
 		{
-			title = 'Override Embedded ASS Styles (اجبار استایل روی ASS)',
+			title = 'Override Embedded ASS Styles',
 			value = 'cycle-values sub-ass-override "force" "yes" "no"; show-text "Sub Style Override: ${sub-ass-override}"',
 		},
 		{
-			title = 'Reset Subtitle Styles (بازنشانی استایل به پیش‌فرض)',
+			title = 'Reset Subtitle Styles to Defaults',
 			value = 'set sub-color "#FFFFFF"; set sub-font "sans-serif"; set sub-scale 1.0; set sub-border-style outline-and-shadow; set sub-border-size 3; set sub-border-color "#000000"; set sub-shadow-offset 0; set sub-back-color "#00000000"; set sub-ass-override yes; show-text "Subtitle Styles Reset to Defaults"',
 		},
 	}
@@ -394,7 +394,7 @@ end
 function create_default_menu_items()
 	return {
 		{title = t('Subtitles'), value = 'script-binding uosc/subtitles'},
-		{title = 'Subtitle Style & Appearance (تنظیمات ظاهر زیرنویس)', items = get_subtitle_style_items()},
+		{title = t('Subtitle Appearance & Style'), items = get_subtitle_style_items()},
 		{title = t('Audio tracks'), value = 'script-binding uosc/audio'},
 		{title = t('Video tracks'), value = 'script-binding uosc/video'},
 		{title = t('Stream quality'), value = 'script-binding uosc/stream-quality'},
@@ -416,7 +416,7 @@ function create_default_menu_items()
 				{title = t('First file'), value = 'script-binding uosc/first'},
 				{title = t('Last file'), value = 'script-binding uosc/last'},
 				{
-					title = t('Playback speed (سرعت پخش)'),
+					title = t('Playback speed'),
 					items = {
 						{title = '0.5x', value = 'set speed 0.5; show-text "Speed: 0.5x"'},
 						{title = '0.75x', value = 'set speed 0.75; show-text "Speed: 0.75x"'},
@@ -455,7 +455,7 @@ function create_default_menu_items()
 			title = t('Utils'),
 			items = {
 				{
-					title = 'Subtitle Style & Appearance (تنظیمات ظاهر زیرنویس)',
+					title = t('Subtitle Appearance & Style'),
 					items = get_subtitle_style_items(),
 				},
 				{

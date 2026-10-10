@@ -1,11 +1,11 @@
 {
   "name": "RMN-Player",
-  "version": "1.1.6",
-  "version_code": 116,
-  "release_date": "2026-10-08",
+  "version": "1.1.7",
+  "version_code": 117,
+  "release_date": "2026-10-10",
   "channel": "stable",
   "repository": "RMNO21/RMN_Player",
-  "changelog": "UI: Added playback speed slider on UI controls bar; added Subtitle Appearance & Style menu (background box, fonts, shadow, outline, size, color).",
+  "changelog": "Fix: Prevent virtual URIs from breaking auto-resume on startup; 100% English subtitle and speed settings menus.",
   "html_url": "https://github.com/RMNO21/RMN_Player",
   "download_url": "https://github.com/RMNO21/RMN_Player/archive/refs/heads/main.zip"
 }
