@@ -1,11 +1,11 @@
 {
   "name": "RMN-Player",
-  "version": "1.1.8",
-  "version_code": 118,
-  "release_date": "2026-10-12",
+  "version": "1.1.9",
+  "version_code": 119,
+  "release_date": "2026-10-13",
   "channel": "stable",
   "repository": "RMNO21/RMN_Player",
-  "changelog": "Feature: Intelligent 100%–200% dynamic volume boost with lookahead peak limiter to eliminate distortion and digital clipping while keeping <100% audio standard and pure.",
+  "changelog": "Fix: Eliminate volume change lag/clicking noise; Enable true +18 dB volume amplification with unattenuated dialogue downmix and analog-grade soft-clip anti-distortion protection.",
   "html_url": "https://github.com/RMNO21/RMN_Player",
   "download_url": "https://github.com/RMNO21/RMN_Player/archive/refs/heads/main.zip"
 }
