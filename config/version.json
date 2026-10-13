@@ -1,11 +1,11 @@
 {
   "name": "RMN-Player",
-  "version": "1.2.2",
-  "version_code": 122,
+  "version": "1.2.3",
+  "version_code": 123,
   "release_date": "2026-10-13",
   "channel": "stable",
   "repository": "RMNO21/RMN_Player",
-  "changelog": "Fix: Restore linear dynamic headroom progression from 200% to 300% (+10.6 dB boost) using studio-grade compressor with makeup gain and analog soft-clip protection.",
+  "changelog": "Feat: Map visual UI volume seamlessly to 0-200% while delivering full 300% boost under the hood (0-100% normal, 100-200% mapped to full amplified range).",
   "html_url": "https://github.com/RMNO21/RMN_Player",
   "download_url": "https://github.com/RMNO21/RMN_Player/archive/refs/heads/main.zip"
 }

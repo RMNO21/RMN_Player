@@ -25,21 +25,22 @@ function VolumeSlider:get_visibility() return Elements.volume:get_visibility(sel
 
 function VolumeSlider:set_volume(volume)
 	volume = round(volume / options.volume_step) * options.volume_step
+	volume = clamp(0, volume, 200)
 	if state.volume == volume then return end
-	mp.commandv('set', 'volume', clamp(0, volume, state.volume_max))
+	local real_volume = ui_to_real_volume(volume)
+	mp.commandv('set', 'volume', real_volume)
 end
 
 function VolumeSlider:set_from_cursor()
 	local volume_fraction = (self.by - cursor.y - self.border_size) / (self.by - self.ay - self.border_size)
-	self:set_volume(volume_fraction * state.volume_max)
+	self:set_volume(volume_fraction * 200)
 end
 
 function VolumeSlider:on_display() self:update_dimensions() end
 function VolumeSlider:on_options() self:update_dimensions() end
 function VolumeSlider:on_coordinates()
-	if type(state.volume_max) ~= 'number' or state.volume_max <= 0 then return end
 	local width = self.bx - self.ax
-	self.nudge_y = self.by - round((self.by - self.ay) * (100 / state.volume_max))
+	self.nudge_y = self.by - round((self.by - self.ay) * 0.5)
 	self.nudge_size = round(width * 0.18)
 	self.draw_nudge = self.ay < self.nudge_y
 	self.spacing = round(width * 0.2)

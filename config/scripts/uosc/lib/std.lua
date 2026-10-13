@@ -10,6 +10,30 @@ function round(number) return math.floor(number + 0.5) end
 ---@param max number
 function clamp(min, value, max) return math.max(min, math.min(value, max)) end
 
+---@param real_vol number
+---@return number
+function real_to_ui_volume(real_vol)
+	if not real_vol then return 0 end
+	if real_vol <= 100 then
+		return real_vol
+	else
+		return 100 + (real_vol - 100) / 2
+	end
+end
+
+---@param ui_vol number
+---@return number
+function ui_to_real_volume(ui_vol)
+	if not ui_vol then return 0 end
+	ui_vol = clamp(0, ui_vol, 200)
+	if ui_vol <= 100 then
+		return ui_vol
+	else
+		return 100 + (ui_vol - 100) * 2
+	end
+end
+
+
 ---@param rgba string `rrggbb` or `rrggbbaa` hex string.
 function serialize_rgba(rgba)
 	local a = rgba:sub(7, 8)

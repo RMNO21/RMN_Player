@@ -530,8 +530,8 @@ state = {
 	fullormaxed = mp.get_property_native('fullscreen') or mp.get_property_native('window-maximized'),
 	render_timer = nil,
 	render_last_time = 0,
-	volume = mp.get_property_native('volume'),
-	volume_max = mp.get_property_native('volume-max'),
+	volume = real_to_ui_volume(mp.get_property_native('volume')),
+	volume_max = 200,
 	mute = nil,
 	type = nil, -- video,image,audio
 	is_idle = false,
@@ -864,8 +864,14 @@ mp.observe_property('idle-active', 'bool', function(_, idle)
 	mp.commandv('script-message-to', 'thumbfast', 'clear')
 end)
 mp.observe_property('pause', 'bool', create_state_setter('pause', function() file_end_timer:kill() end))
-mp.observe_property('volume', 'number', create_state_setter('volume'))
-mp.observe_property('volume-max', 'number', create_state_setter('volume_max'))
+mp.observe_property('volume', 'number', function(_, val)
+	set_state('volume', real_to_ui_volume(val))
+	request_render()
+end)
+mp.observe_property('volume-max', 'number', function()
+	set_state('volume_max', 200)
+	request_render()
+end)
 mp.observe_property('mute', 'bool', create_state_setter('mute'))
 mp.observe_property('osd-dimensions', 'native', function(name, val)
 	update_display_dimensions()
@@ -952,6 +958,8 @@ bind_command('flash-ui', function() Elements:flash({'timeline', 'controls', 'vol
 bind_command('flash-timeline', function() Elements:flash({'timeline'}) end)
 bind_command('flash-top-bar', function() Elements:flash({'top_bar'}) end)
 bind_command('flash-volume', function() Elements:flash({'volume'}) end)
+bind_command('add-volume-up', function() mp.commandv('script-message-to', 'uosc', 'add-volume', 5) end)
+bind_command('add-volume-down', function() mp.commandv('script-message-to', 'uosc', 'add-volume', -5) end)
 bind_command('flash-speed', function() Elements:flash({'speed'}) end)
 bind_command('flash-pause-indicator', function() Elements:flash({'pause_indicator'}) end)
 bind_command('flash-progress', function() Elements:flash({'progress'}) end)
@@ -1285,6 +1293,16 @@ end)
 mp.register_script_message('flash-elements', function(elements) Elements:flash(comma_split(elements)) end)
 mp.register_script_message('overwrite-binding', function(name, command) key_binding_overwrites[name] = command end)
 mp.register_script_message('disable-elements', function(id, elements) Manager:disable(id, elements) end)
+mp.register_script_message('add-volume', function(delta)
+	delta = tonumber(delta) or 5
+	local current_real = mp.get_property_number('volume', 100)
+	local current_ui = real_to_ui_volume(current_real)
+	local new_ui = clamp(0, round(current_ui + delta), 200)
+	local new_real = ui_to_real_volume(new_ui)
+	mp.commandv('set', 'volume', new_real)
+	Elements:flash({'volume'})
+end)
+
 
 --[[ ELEMENTS ]]
 
