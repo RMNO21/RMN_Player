@@ -958,8 +958,8 @@ bind_command('flash-ui', function() Elements:flash({'timeline', 'controls', 'vol
 bind_command('flash-timeline', function() Elements:flash({'timeline'}) end)
 bind_command('flash-top-bar', function() Elements:flash({'top_bar'}) end)
 bind_command('flash-volume', function() Elements:flash({'volume'}) end)
-bind_command('add-volume-up', function() mp.commandv('script-message-to', 'uosc', 'add-volume', 5) end)
-bind_command('add-volume-down', function() mp.commandv('script-message-to', 'uosc', 'add-volume', -5) end)
+bind_command('add-volume-up', function() mp.commandv('script-message-to', 'uosc', 'add-volume', 5) end, {repeatable = true})
+bind_command('add-volume-down', function() mp.commandv('script-message-to', 'uosc', 'add-volume', -5) end, {repeatable = true})
 bind_command('flash-speed', function() Elements:flash({'speed'}) end)
 bind_command('flash-pause-indicator', function() Elements:flash({'pause_indicator'}) end)
 bind_command('flash-progress', function() Elements:flash({'progress'}) end)
@@ -1295,9 +1295,9 @@ mp.register_script_message('overwrite-binding', function(name, command) key_bind
 mp.register_script_message('disable-elements', function(id, elements) Manager:disable(id, elements) end)
 mp.register_script_message('add-volume', function(delta)
 	delta = tonumber(delta) or 5
-	local current_real = mp.get_property_number('volume', 100)
-	local current_ui = real_to_ui_volume(current_real)
+	local current_ui = state.volume or real_to_ui_volume(mp.get_property_number('volume', 100))
 	local new_ui = clamp(0, round(current_ui + delta), 200)
+	state.volume = new_ui
 	local new_real = ui_to_real_volume(new_ui)
 	mp.commandv('set', 'volume', new_real)
 	Elements:flash({'volume'})
