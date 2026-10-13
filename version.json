@@ -1,11 +1,11 @@
 {
   "name": "RMN-Player",
-  "version": "1.1.9",
-  "version_code": 119,
+  "version": "1.2.0",
+  "version_code": 120,
   "release_date": "2026-10-13",
   "channel": "stable",
   "repository": "RMNO21/RMN_Player",
-  "changelog": "Fix: Eliminate volume change lag/clicking noise; Enable true +18 dB volume amplification with unattenuated dialogue downmix and analog-grade soft-clip anti-distortion protection.",
+  "changelog": "Feature: Powerful high-impact volume amplification using optimized Dynamic Audio Normalizer (dynaudnorm) paired with analog soft-clip saturation (asoftclip) and full-headroom dialogue downmixing.",
   "html_url": "https://github.com/RMNO21/RMN_Player",
   "download_url": "https://github.com/RMNO21/RMN_Player/archive/refs/heads/main.zip"
 }
