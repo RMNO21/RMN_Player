@@ -1,11 +1,11 @@
 {
   "name": "RMN-Player",
-  "version": "1.2.1",
-  "version_code": 121,
+  "version": "1.2.2",
+  "version_code": 122,
   "release_date": "2026-10-13",
   "channel": "stable",
   "repository": "RMNO21/RMN_Player",
-  "changelog": "Feature: Expanded volume ceiling to 300% and boosted dynamic normalizer max gain to m=30 for extreme loudness.",
+  "changelog": "Fix: Restore linear dynamic headroom progression from 200% to 300% (+10.6 dB boost) using studio-grade compressor with makeup gain and analog soft-clip protection.",
   "html_url": "https://github.com/RMNO21/RMN_Player",
   "download_url": "https://github.com/RMNO21/RMN_Player/archive/refs/heads/main.zip"
 }
