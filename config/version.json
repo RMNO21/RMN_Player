@@ -1,11 +1,11 @@
 {
   "name": "RMN-Player",
-  "version": "1.2.0",
-  "version_code": 120,
+  "version": "1.2.1",
+  "version_code": 121,
   "release_date": "2026-10-13",
   "channel": "stable",
   "repository": "RMNO21/RMN_Player",
-  "changelog": "Feature: Powerful high-impact volume amplification using optimized Dynamic Audio Normalizer (dynaudnorm) paired with analog soft-clip saturation (asoftclip) and full-headroom dialogue downmixing.",
+  "changelog": "Feature: Expanded volume ceiling to 300% and boosted dynamic normalizer max gain to m=30 for extreme loudness.",
   "html_url": "https://github.com/RMNO21/RMN_Player",
   "download_url": "https://github.com/RMNO21/RMN_Player/archive/refs/heads/main.zip"
 }
