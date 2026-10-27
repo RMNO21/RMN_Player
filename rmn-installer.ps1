@@ -155,6 +155,17 @@ function Install-ConfigFiles {
         Write-Status "Config folder not found at: $PackageConfigDir" "Warning"
     }
     
+    # Ensure portable_config junction exists in player directory
+    $portableConfig = Join-Path $InstallDir "portable_config"
+    if (!(Test-Path $portableConfig)) {
+        try {
+            cmd.exe /c "mklink /J `"$portableConfig`" `"$ConfigDir`"" | Out-Null
+            Write-Status "Created portable_config link" "Success"
+        } catch {
+            Write-Status "Could not link portable_config" "Warning"
+        }
+    }
+    
     # Update thumbfast config with correct mpv path
     Fix-ThumbfastConfig
 }
@@ -303,7 +314,7 @@ function Set-FileAssociations {
 
         $shellKey = "$progIdRoot\shell\open\command"
         if (!(Test-Path $shellKey)) { New-Item -Path $shellKey -Force | Out-Null }
-        Set-ItemProperty -Path $shellKey -Name "(Default)" -Value "`"$mpvPath`" `"%1`""
+        Set-ItemProperty -Path $shellKey -Name "(Default)" -Value "`"$mpvPath`" --config-dir=`"$ConfigDir`" `"%1`""
     } catch {
         Write-Status "Could not register ProgId" "Warning"
     }
@@ -319,7 +330,7 @@ function Set-FileAssociations {
 
             $extShell = "$extKey\shell\open\command"
             if (!(Test-Path $extShell)) { New-Item -Path $extShell -Force | Out-Null }
-            Set-ItemProperty -Path $extShell -Name "(Default)" -Value "`"$mpvPath`" `"%1`""
+            Set-ItemProperty -Path $extShell -Name "(Default)" -Value "`"$mpvPath`" --config-dir=`"$ConfigDir`" `"%1`""
 
             $openWith = "Registry::HKEY_CURRENT_USER\Software\Classes\$ext\OpenWithProgids"
             if (!(Test-Path $openWith)) { New-Item -Path $openWith -Force | Out-Null }
