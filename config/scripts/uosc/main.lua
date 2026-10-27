@@ -301,31 +301,57 @@ update_config()
 
 -- Helper function for subtitle appearance menu
 local function get_subtitle_style_items()
+	local cur_font = mp.get_property('sub-font') or 'sans-serif'
+	local cur_scale = mp.get_property_number('sub-scale', 1.0)
+	local cur_scale_pct = math.floor(cur_scale * 100 + 0.5)
+	local cur_border_style = mp.get_property('sub-border-style') or 'outline-and-shadow'
+	local cur_back_color = (mp.get_property('sub-back-color') or ''):upper()
+	local cur_border_size = mp.get_property_number('sub-border-size', 3)
+	local cur_shadow = mp.get_property_number('sub-shadow-offset', 0)
+	local cur_color = (mp.get_property('sub-color') or ''):upper()
+	local cur_override = mp.get_property('sub-ass-override') or 'yes'
+	local font_lower = cur_font:lower()
+
+	local is_box_off = cur_border_style == 'outline-and-shadow' or cur_back_color == '' or cur_back_color:sub(1, 3) == '#00'
+	local is_box_50 = cur_border_style == 'background-box' and cur_back_color:sub(1, 3) == '#80'
+	local is_box_80 = cur_border_style == 'background-box' and cur_back_color:sub(1, 3) == '#CC'
+	local is_box_100 = cur_border_style == 'background-box' and cur_back_color:sub(1, 3) == '#FF'
+	local is_box_opaque = cur_border_style == 'opaque-box'
+
+	local box_hint = 'Off'
+	if is_box_50 then box_hint = '50%'
+	elseif is_box_80 then box_hint = '80%'
+	elseif is_box_100 then box_hint = '100%'
+	elseif is_box_opaque then box_hint = 'Opaque'
+	end
+
 	return {
 		{
 			title = 'Background Box',
+			hint = box_hint,
 			items = {
-				{title = 'Off (Transparent)', value = 'set sub-border-style outline-and-shadow; set sub-back-color "#00000000"; show-text "Subtitle Box: Off"'},
-				{title = 'Semi-Transparent (50%)', value = 'set sub-border-style background-box; set sub-back-color "#80000000"; show-text "Subtitle Box: Semi-Transparent (50%)"'},
-				{title = 'Dark (80%)', value = 'set sub-border-style background-box; set sub-back-color "#CC000000"; show-text "Subtitle Box: Dark (80%)"'},
-				{title = 'Solid Black (100%)', value = 'set sub-border-style background-box; set sub-back-color "#FF000000"; show-text "Subtitle Box: Solid Black (100%)"'},
-				{title = 'Compact Opaque', value = 'set sub-border-style opaque-box; set sub-back-color "#A0000000"; show-text "Subtitle Box: Compact Opaque"'},
+				{title = 'Off (Transparent)', value = 'set sub-border-style outline-and-shadow; set sub-back-color "#00000000"; show-text "Subtitle Box: Off"', active = is_box_off},
+				{title = 'Semi-Transparent (50%)', value = 'set sub-border-style background-box; set sub-back-color "#80000000"; show-text "Subtitle Box: Semi-Transparent (50%)"', active = is_box_50},
+				{title = 'Dark (80%)', value = 'set sub-border-style background-box; set sub-back-color "#CC000000"; show-text "Subtitle Box: Dark (80%)"', active = is_box_80},
+				{title = 'Solid Black (100%)', value = 'set sub-border-style background-box; set sub-back-color "#FF000000"; show-text "Subtitle Box: Solid Black (100%)"', active = is_box_100},
+				{title = 'Compact Opaque', value = 'set sub-border-style opaque-box; set sub-back-color "#A0000000"; show-text "Subtitle Box: Compact Opaque"', active = is_box_opaque},
 			},
 		},
 		{
 			title = 'Font Family',
+			hint = cur_font ~= '' and cur_font or 'sans-serif',
 			items = {
-				{title = 'Vazirmatn', value = 'set sub-font "Vazirmatn"; show-text "Subtitle Font: Vazirmatn"'},
-				{title = 'IRANSans', value = 'set sub-font "IRANSans"; show-text "Subtitle Font: IRANSans"'},
-				{title = 'Shabnam', value = 'set sub-font "Shabnam"; show-text "Subtitle Font: Shabnam"'},
-				{title = 'Sahel', value = 'set sub-font "Sahel"; show-text "Subtitle Font: Sahel"'},
-				{title = 'Segoe UI', value = 'set sub-font "Segoe UI"; show-text "Subtitle Font: Segoe UI"'},
-				{title = 'Tahoma', value = 'set sub-font "Tahoma"; show-text "Subtitle Font: Tahoma"'},
-				{title = 'Arial', value = 'set sub-font "Arial"; show-text "Subtitle Font: Arial"'},
-				{title = 'Trebuchet MS', value = 'set sub-font "Trebuchet MS"; show-text "Subtitle Font: Trebuchet MS"'},
-				{title = 'Consolas (Monospace)', value = 'set sub-font "Consolas"; show-text "Subtitle Font: Consolas"'},
+				{title = 'Vazirmatn', value = 'set sub-font "Vazirmatn"; show-text "Subtitle Font: Vazirmatn"', active = font_lower == 'vazirmatn'},
+				{title = 'IRANSans', value = 'set sub-font "IRANSans"; show-text "Subtitle Font: IRANSans"', active = font_lower == 'iransans'},
+				{title = 'Shabnam', value = 'set sub-font "Shabnam"; show-text "Subtitle Font: Shabnam"', active = font_lower == 'shabnam'},
+				{title = 'Sahel', value = 'set sub-font "Sahel"; show-text "Subtitle Font: Sahel"', active = font_lower == 'sahel'},
+				{title = 'Segoe UI', value = 'set sub-font "Segoe UI"; show-text "Subtitle Font: Segoe UI"', active = font_lower == 'segoe ui'},
+				{title = 'Tahoma', value = 'set sub-font "Tahoma"; show-text "Subtitle Font: Tahoma"', active = font_lower == 'tahoma'},
+				{title = 'Arial', value = 'set sub-font "Arial"; show-text "Subtitle Font: Arial"', active = font_lower == 'arial'},
+				{title = 'Trebuchet MS', value = 'set sub-font "Trebuchet MS"; show-text "Subtitle Font: Trebuchet MS"', active = font_lower == 'trebuchet ms'},
+				{title = 'Consolas (Monospace)', value = 'set sub-font "Consolas"; show-text "Subtitle Font: Consolas"', active = font_lower == 'consolas'},
 				{separator = true},
-				{title = 'System Default', value = 'set sub-font "sans-serif"; show-text "Subtitle Font: Default"'},
+				{title = 'System Default', value = 'set sub-font "sans-serif"; show-text "Subtitle Font: Default"', active = font_lower == 'sans-serif' or cur_font == ''},
 			},
 		},
 		{
@@ -333,33 +359,36 @@ local function get_subtitle_style_items()
 			items = {
 				{
 					title = 'Shadow Depth',
+					hint = tostring(cur_shadow) .. 'px',
 					items = {
-						{title = 'Off (No Shadow)', value = 'set sub-shadow-offset 0; show-text "Subtitle Shadow: Off"'},
-						{title = 'Soft (2px)', value = 'set sub-shadow-offset 2; set sub-shadow-color "#000000"; show-text "Subtitle Shadow: Soft (2px)"'},
-						{title = 'Medium (3.5px)', value = 'set sub-shadow-offset 3.5; set sub-shadow-color "#000000"; show-text "Subtitle Shadow: Medium (3.5px)"'},
-						{title = 'Strong (5px)', value = 'set sub-shadow-offset 5; set sub-shadow-color "#000000"; show-text "Subtitle Shadow: Strong (5px)"'},
+						{title = 'Off (No Shadow)', value = 'set sub-shadow-offset 0; show-text "Subtitle Shadow: Off"', active = cur_shadow == 0},
+						{title = 'Soft (2px)', value = 'set sub-shadow-offset 2; set sub-shadow-color "#000000"; show-text "Subtitle Shadow: Soft (2px)"', active = math.abs(cur_shadow - 2) < 0.2},
+						{title = 'Medium (3.5px)', value = 'set sub-shadow-offset 3.5; set sub-shadow-color "#000000"; show-text "Subtitle Shadow: Medium (3.5px)"', active = math.abs(cur_shadow - 3.5) < 0.2},
+						{title = 'Strong (5px)', value = 'set sub-shadow-offset 5; set sub-shadow-color "#000000"; show-text "Subtitle Shadow: Strong (5px)"', active = math.abs(cur_shadow - 5) < 0.2},
 					},
 				},
 				{
 					title = 'Outline Thickness',
+					hint = tostring(cur_border_size) .. 'px',
 					items = {
-						{title = 'None (0px)', value = 'set sub-border-size 0; show-text "Subtitle Outline: None"'},
-						{title = 'Thin (1.5px)', value = 'set sub-border-size 1.5; set sub-border-color "#000000"; show-text "Subtitle Outline: Thin (1.5px)"'},
-						{title = 'Medium (3px - Default)', value = 'set sub-border-size 3; set sub-border-color "#000000"; show-text "Subtitle Outline: Medium (3px)"'},
-						{title = 'Thick (4.5px)', value = 'set sub-border-size 4.5; set sub-border-color "#000000"; show-text "Subtitle Outline: Thick (4.5px)"'},
-						{title = 'Extra Thick (6px)', value = 'set sub-border-size 6; set sub-border-color "#000000"; show-text "Subtitle Outline: Extra Thick (6px)"'},
+						{title = 'None (0px)', value = 'set sub-border-size 0; show-text "Subtitle Outline: None"', active = cur_border_size == 0},
+						{title = 'Thin (1.5px)', value = 'set sub-border-size 1.5; set sub-border-color "#000000"; show-text "Subtitle Outline: Thin (1.5px)"', active = math.abs(cur_border_size - 1.5) < 0.2},
+						{title = 'Medium (3px - Default)', value = 'set sub-border-size 3; set sub-border-color "#000000"; show-text "Subtitle Outline: Medium (3px)"', active = math.abs(cur_border_size - 3) < 0.2},
+						{title = 'Thick (4.5px)', value = 'set sub-border-size 4.5; set sub-border-color "#000000"; show-text "Subtitle Outline: Thick (4.5px)"', active = math.abs(cur_border_size - 4.5) < 0.2},
+						{title = 'Extra Thick (6px)', value = 'set sub-border-size 6; set sub-border-color "#000000"; show-text "Subtitle Outline: Extra Thick (6px)"', active = math.abs(cur_border_size - 6) < 0.2},
 					},
 				},
 			},
 		},
 		{
 			title = 'Text Size',
+			hint = tostring(cur_scale_pct) .. '%',
 			items = {
-				{title = 'Small (75%)', value = 'set sub-scale 0.75; show-text "Subtitle Size: 75%"'},
-				{title = 'Normal (100% - Default)', value = 'set sub-scale 1.0; show-text "Subtitle Size: 100%"'},
-				{title = 'Large (125%)', value = 'set sub-scale 1.25; show-text "Subtitle Size: 125%"'},
-				{title = 'Extra Large (150%)', value = 'set sub-scale 1.5; show-text "Subtitle Size: 150%"'},
-				{title = 'Huge (175%)', value = 'set sub-scale 1.75; show-text "Subtitle Size: 175%"'},
+				{title = 'Small (75%)', value = 'set sub-scale 0.75; show-text "Subtitle Size: 75%"', active = math.abs(cur_scale - 0.75) < 0.05},
+				{title = 'Normal (100% - Default)', value = 'set sub-scale 1.0; show-text "Subtitle Size: 100%"', active = math.abs(cur_scale - 1.0) < 0.05},
+				{title = 'Large (125%)', value = 'set sub-scale 1.25; show-text "Subtitle Size: 125%"', active = math.abs(cur_scale - 1.25) < 0.05},
+				{title = 'Extra Large (150%)', value = 'set sub-scale 1.5; show-text "Subtitle Size: 150%"', active = math.abs(cur_scale - 1.5) < 0.05},
+				{title = 'Huge (175%)', value = 'set sub-scale 1.75; show-text "Subtitle Size: 175%"', active = math.abs(cur_scale - 1.75) < 0.05},
 				{separator = true},
 				{title = 'Increase Size (+10%)', value = 'add sub-scale 0.1; show-text "Subtitle Size: +10%"'},
 				{title = 'Decrease Size (-10%)', value = 'add sub-scale -0.1; show-text "Subtitle Size: -10%"'},
@@ -369,18 +398,19 @@ local function get_subtitle_style_items()
 		{
 			title = 'Text Color',
 			items = {
-				{title = 'White (Default)', value = 'set sub-color "#FFFFFF"; show-text "Subtitle Color: White"'},
-				{title = 'Warm White / Cream', value = 'set sub-color "#FFF8E7"; show-text "Subtitle Color: Warm White"'},
-				{title = 'Yellow (Cinema)', value = 'set sub-color "#FFFF00"; show-text "Subtitle Color: Yellow"'},
-				{title = 'Gold', value = 'set sub-color "#FFD700"; show-text "Subtitle Color: Gold"'},
-				{title = 'Cyan', value = 'set sub-color "#00FFFF"; show-text "Subtitle Color: Cyan"'},
-				{title = 'Light Green', value = 'set sub-color "#90EE90"; show-text "Subtitle Color: Light Green"'},
-				{title = 'Light Gray', value = 'set sub-color "#D3D3D3"; show-text "Subtitle Color: Light Gray"'},
+				{title = 'White (Default)', value = 'set sub-color "#FFFFFF"; show-text "Subtitle Color: White"', active = cur_color:find('FFFFFF') ~= nil or cur_color == ''},
+				{title = 'Warm White / Cream', value = 'set sub-color "#FFF8E7"; show-text "Subtitle Color: Warm White"', active = cur_color:find('FFF8E7') ~= nil},
+				{title = 'Yellow (Cinema)', value = 'set sub-color "#FFFF00"; show-text "Subtitle Color: Yellow"', active = cur_color:find('FFFF00') ~= nil},
+				{title = 'Gold', value = 'set sub-color "#FFD700"; show-text "Subtitle Color: Gold"', active = cur_color:find('FFD700') ~= nil},
+				{title = 'Cyan', value = 'set sub-color "#00FFFF"; show-text "Subtitle Color: Cyan"', active = cur_color:find('00FFFF') ~= nil},
+				{title = 'Light Green', value = 'set sub-color "#90EE90"; show-text "Subtitle Color: Light Green"', active = cur_color:find('90EE90') ~= nil},
+				{title = 'Light Gray', value = 'set sub-color "#D3D3D3"; show-text "Subtitle Color: Light Gray"', active = cur_color:find('D3D3D3') ~= nil},
 			},
 		},
 		{separator = true},
 		{
 			title = 'Override Embedded ASS Styles',
+			hint = cur_override,
 			value = 'cycle-values sub-ass-override "force" "yes" "no"; show-text "Sub Style Override: ${sub-ass-override}"',
 		},
 		{
@@ -389,6 +419,7 @@ local function get_subtitle_style_items()
 		},
 	}
 end
+
 
 -- Default menu items
 function create_default_menu_items()
