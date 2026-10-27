@@ -794,6 +794,24 @@ end
 
 --[[ STATE HOOKS ]]
 
+-- Audio Boost 200+ Architecture (Maximum Perceived Loudness Engine)
+local NORMAL_AF = 'lavfi=[acompressor=threshold=0.25:ratio=3:attack=15:release=150:makeup=2.0:knee=2.8,asoftclip=type=tanh:threshold=0.85:output=0.98]'
+local BOOST_AF = 'lavfi=[dynaudnorm=f=75:g=25:p=0.99:m=30:r=0.9:b=1,volume=volume=12dB:precision=fixed,alimiter=level_in=1:level_out=1:limit=0.99:attack=5:release=50]'
+local boost_active = false
+
+local function set_boost_mode(enable, show_osd)
+	if boost_active == enable then return end
+	boost_active = enable
+	if enable then
+		mp.set_property('af', BOOST_AF)
+		if show_osd ~= false then
+			mp.osd_message('Volume: 200+ (MAX BOOST)', 1.5)
+		end
+	else
+		mp.set_property('af', NORMAL_AF)
+	end
+end
+
 mp.register_event('file-loaded', function()
 	local path = normalize_path(mp.get_property_native('path'))
 	itable_delete_value(state.history, path)
@@ -806,6 +824,12 @@ mp.register_event('file-loaded', function()
 			Elements:flash({'top_bar'})
 			break
 		end
+	end
+
+	local cur_vol = mp.get_property_number('volume', 100)
+	if cur_vol > 300 then
+		boost_active = false
+		set_boost_mode(true, false)
 	end
 end)
 mp.register_event('end-file', function(event)
@@ -896,7 +920,9 @@ mp.observe_property('idle-active', 'bool', function(_, idle)
 end)
 mp.observe_property('pause', 'bool', create_state_setter('pause', function() file_end_timer:kill() end))
 mp.observe_property('volume', 'number', function(_, val)
+	val = val or 100
 	set_state('volume', real_to_ui_volume(val))
+	set_boost_mode(val > 300)
 	request_render()
 end)
 mp.observe_property('volume-max', 'number', function()
@@ -1327,7 +1353,20 @@ mp.register_script_message('disable-elements', function(id, elements) Manager:di
 mp.register_script_message('add-volume', function(delta)
 	delta = tonumber(delta) or 5
 	local current_ui = state.volume or real_to_ui_volume(mp.get_property_number('volume', 100))
-	local new_ui = clamp(0, round(current_ui + delta), 200)
+	local new_ui
+	if delta > 0 then
+		if current_ui >= 200 then
+			new_ui = 205
+		else
+			new_ui = math.min(200, round(current_ui + delta))
+		end
+	else
+		if current_ui > 200 then
+			new_ui = 200
+		else
+			new_ui = math.max(0, round(current_ui + delta))
+		end
+	end
 	state.volume = new_ui
 	local new_real = ui_to_real_volume(new_ui)
 	mp.commandv('set', 'volume', new_real)

@@ -16,8 +16,10 @@ function real_to_ui_volume(real_vol)
 	if not real_vol then return 0 end
 	if real_vol <= 100 then
 		return real_vol
-	else
+	elseif real_vol <= 300 then
 		return 100 + (real_vol - 100) / 2
+	else
+		return 205
 	end
 end
 
@@ -25,11 +27,12 @@ end
 ---@return number
 function ui_to_real_volume(ui_vol)
 	if not ui_vol then return 0 end
-	ui_vol = clamp(0, ui_vol, 200)
 	if ui_vol <= 100 then
 		return ui_vol
-	else
+	elseif ui_vol <= 200 then
 		return 100 + (ui_vol - 100) * 2
+	else
+		return 500
 	end
 end
 

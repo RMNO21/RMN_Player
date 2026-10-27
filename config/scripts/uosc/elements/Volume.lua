@@ -24,8 +24,12 @@ end
 function VolumeSlider:get_visibility() return Elements.volume:get_visibility(self) end
 
 function VolumeSlider:set_volume(volume)
-	volume = round(volume / options.volume_step) * options.volume_step
-	volume = clamp(0, volume, 200)
+	if volume > 200 then
+		volume = 205
+	else
+		volume = round(volume / options.volume_step) * options.volume_step
+		volume = clamp(0, volume, 200)
+	end
 	if state.volume == volume then return end
 	local real_volume = ui_to_real_volume(volume)
 	mp.commandv('set', 'volume', real_volume)
@@ -33,7 +37,11 @@ end
 
 function VolumeSlider:set_from_cursor()
 	local volume_fraction = (self.by - cursor.y - self.border_size) / (self.by - self.ay - self.border_size)
-	self:set_volume(volume_fraction * 200)
+	if volume_fraction >= 1.05 then
+		self:set_volume(205)
+	else
+		self:set_volume(clamp(0, volume_fraction * 200, 200))
+	end
 end
 
 function VolumeSlider:on_display() self:update_dimensions() end
@@ -48,8 +56,20 @@ end
 function VolumeSlider:on_global_mouse_move()
 	if self.pressed then self:set_from_cursor() end
 end
-function VolumeSlider:handle_wheel_up() self:set_volume(state.volume + options.volume_step) end
-function VolumeSlider:handle_wheel_down() self:set_volume(state.volume - options.volume_step) end
+function VolumeSlider:handle_wheel_up()
+	if state.volume >= 200 then
+		self:set_volume(205)
+	else
+		self:set_volume(math.min(200, state.volume + options.volume_step))
+	end
+end
+function VolumeSlider:handle_wheel_down()
+	if state.volume > 200 then
+		self:set_volume(200)
+	else
+		self:set_volume(math.max(0, state.volume - options.volume_step))
+	end
+end
 
 function VolumeSlider:render()
 	local visibility = self:get_visibility()
@@ -148,9 +168,12 @@ function VolumeSlider:render()
 	ass:append(bg_path.text)
 	ass:draw_stop()
 
-	-- Foreground
+	-- Foreground (fiery amber/orange in 200+ MAX BOOST mode)
+	local is_boost = state.volume > 200
+	local cur_fg = is_boost and '0088ff' or fg
+
 	ass:new_event()
-	ass:append('{\\rDefault\\an7\\blur0\\bord0\\1c&H' .. fg .. '}')
+	ass:append('{\\rDefault\\an7\\blur0\\bord0\\1c&H' .. cur_fg .. '}')
 	ass:opacity(config.opacity.slider_gauge, visibility)
 	ass:pos(0, 0)
 	ass:draw_start()
@@ -158,7 +181,7 @@ function VolumeSlider:render()
 	ass:draw_stop()
 
 	-- Current volume value
-	local volume_string = tostring(round(state.volume * 10) / 10)
+	local volume_string = is_boost and '200+' or tostring(round(state.volume * 10) / 10)
 	local font_size = round(((width * 0.6) - (#volume_string * (width / 20))) * options.font_scale)
 	if volume_y < self.by - self.spacing then
 		ass:txt(self.ax + (width / 2), self.by - self.spacing, 2, volume_string, {
