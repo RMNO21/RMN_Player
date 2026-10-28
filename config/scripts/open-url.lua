@@ -548,7 +548,7 @@ local function open_url_menu()
 			hint = preview,
 			value = "script-message open-url-play-clip",
 			bold = true,
-		end)
+		})
 	end
 
 	table.insert(menu_items, {
@@ -557,7 +557,7 @@ local function open_url_menu()
 		hint = "Type or paste link",
 		icon = "edit",
 		separator = true,
-	end)
+	})
 
 	-- Recently Watched Section
 	local recent_items = get_recent_history_items(10)
@@ -567,7 +567,7 @@ local function open_url_menu()
 			hint = tostring(#recent_items) .. " saved",
 			icon = "history",
 			items = recent_items,
-		end)
+		})
 
 		-- Show top recent items directly in the main list for 1-click instant resume!
 		for i = 1, math.min(3, #recent_items) do
@@ -577,7 +577,7 @@ local function open_url_menu()
 				hint = item.hint,
 				icon = "play_arrow",
 				value = item.value,
-			end)
+			})
 		end
 
 		table.insert(menu_items, {
@@ -585,7 +585,7 @@ local function open_url_menu()
 			value = "script-message open-url-clear-history",
 			icon = "delete",
 			separator = true,
-		end)
+		})
 	end
 
 	-- Engine Settings
@@ -595,13 +595,13 @@ local function open_url_menu()
 		hint = autoload_episodes and "Enabled" or "Disabled",
 		value = "script-message open-url-toggle-autoload",
 		active = autoload_episodes,
-	end)
+	})
 
 	table.insert(menu_items, {
 		title = "Purge Stream Disk Cache",
 		hint = tostring(cache_mb) .. " MB",
 		value = "script-message open-url-purge-cache",
-	end)
+	})
 
 	local menu_data = {
 		type = "open-url-master",
