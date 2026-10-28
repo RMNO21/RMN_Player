@@ -105,6 +105,7 @@ function Install-ConfigFiles {
     New-Item -ItemType Directory -Path "$ConfigDir\script-opts" -Force | Out-Null
     New-Item -ItemType Directory -Path "$ConfigDir\fonts" -Force | Out-Null
     New-Item -ItemType Directory -Path "$ConfigDir\watch_later" -Force | Out-Null
+    New-Item -ItemType Directory -Path "$ConfigDir\temp_stream_cache" -Force | Out-Null
 
     # Copy config files from package
     if (Test-Path $PackageConfigDir) {
