@@ -424,6 +424,9 @@ end
 -- Default menu items
 function create_default_menu_items()
 	return {
+		{title = t('Open URL / Stream Online'), value = 'script-message open-url-menu', icon = 'link'},
+		{title = t('Open file'), value = 'script-binding uosc/open-file', icon = 'folder_open'},
+		{separator = true},
 		{title = t('Subtitles'), value = 'script-binding uosc/subtitles'},
 		{title = t('Subtitle Appearance & Style'), items = get_subtitle_style_items()},
 		{title = t('Audio tracks'), value = 'script-binding uosc/audio'},

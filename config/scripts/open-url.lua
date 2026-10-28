@@ -394,6 +394,34 @@ end
 -- ============================================================================
 -- Interactive uosc Menu
 -- ============================================================================
+local function open_url_prompt()
+	local clip = get_clipboard_text()
+	local menu_data = {
+		type = "open-url-input",
+		title = "Paste or Type Stream URL...",
+		footnote = "Press Enter to load and stream the video",
+		search_style = "palette",
+		search_debounce = "submit",
+		search_suggestion = (clip and is_web_url(clip)) and clip or "",
+		on_search = "script-message open-url-load",
+		on_paste = "script-message open-url-load",
+		items = {
+			{
+				title = "Type or paste link and press Enter",
+				align = "center",
+				muted = true,
+				italic = true,
+				selectable = false,
+			},
+		},
+		keep_open = false,
+	}
+	local ok, json = pcall(utils.format_json, menu_data)
+	if ok and json then
+		mp.commandv("script-message-to", "uosc", "open-menu", json)
+	end
+end
+
 local function open_url_menu()
 	local clip = get_clipboard_text()
 	local clip_is_url = clip and is_web_url(clip)
@@ -484,6 +512,7 @@ end
 -- Script Messages
 -- ============================================================================
 mp.register_script_message("open-url-menu", open_url_menu)
+mp.register_script_message("open-url-prompt", open_url_prompt)
 
 mp.register_script_message("open-url-load", function(url)
 	play_stream_url(url)
