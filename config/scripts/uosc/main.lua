@@ -349,8 +349,7 @@ local function get_subtitle_style_items()
 				{title = 'Tahoma', value = 'set sub-font "Tahoma"; show-text "Subtitle Font: Tahoma"', active = font_lower == 'tahoma'},
 				{title = 'Arial', value = 'set sub-font "Arial"; show-text "Subtitle Font: Arial"', active = font_lower == 'arial'},
 				{title = 'Trebuchet MS', value = 'set sub-font "Trebuchet MS"; show-text "Subtitle Font: Trebuchet MS"', active = font_lower == 'trebuchet ms'},
-				{title = 'Consolas (Monospace)', value = 'set sub-font "Consolas"; show-text "Subtitle Font: Consolas"', active = font_lower == 'consolas'},
-				{separator = true},
+				{title = 'Consolas (Monospace)', value = 'set sub-font "Consolas"; show-text "Subtitle Font: Consolas"', active = font_lower == 'consolas', separator = true},
 				{title = 'System Default', value = 'set sub-font "sans-serif"; show-text "Subtitle Font: Default"', active = font_lower == 'sans-serif' or cur_font == ''},
 			},
 		},
@@ -388,8 +387,7 @@ local function get_subtitle_style_items()
 				{title = 'Normal (100% - Default)', value = 'set sub-scale 1.0; show-text "Subtitle Size: 100%"', active = math.abs(cur_scale - 1.0) < 0.05},
 				{title = 'Large (125%)', value = 'set sub-scale 1.25; show-text "Subtitle Size: 125%"', active = math.abs(cur_scale - 1.25) < 0.05},
 				{title = 'Extra Large (150%)', value = 'set sub-scale 1.5; show-text "Subtitle Size: 150%"', active = math.abs(cur_scale - 1.5) < 0.05},
-				{title = 'Huge (175%)', value = 'set sub-scale 1.75; show-text "Subtitle Size: 175%"', active = math.abs(cur_scale - 1.75) < 0.05},
-				{separator = true},
+				{title = 'Huge (175%)', value = 'set sub-scale 1.75; show-text "Subtitle Size: 175%"', active = math.abs(cur_scale - 1.75) < 0.05, separator = true},
 				{title = 'Increase Size (+10%)', value = 'add sub-scale 0.1; show-text "Subtitle Size: +10%"'},
 				{title = 'Decrease Size (-10%)', value = 'add sub-scale -0.1; show-text "Subtitle Size: -10%"'},
 				{title = 'Reset Size (100%)', value = 'set sub-scale 1.0; show-text "Subtitle Size: Reset (100%)"'},
@@ -397,6 +395,7 @@ local function get_subtitle_style_items()
 		},
 		{
 			title = 'Text Color',
+			separator = true,
 			items = {
 				{title = 'White (Default)', value = 'set sub-color "#FFFFFF"; show-text "Subtitle Color: White"', active = cur_color:find('FFFFFF') ~= nil or cur_color == ''},
 				{title = 'Warm White / Cream', value = 'set sub-color "#FFF8E7"; show-text "Subtitle Color: Warm White"', active = cur_color:find('FFF8E7') ~= nil},
@@ -407,7 +406,6 @@ local function get_subtitle_style_items()
 				{title = 'Light Gray', value = 'set sub-color "#D3D3D3"; show-text "Subtitle Color: Light Gray"', active = cur_color:find('D3D3D3') ~= nil},
 			},
 		},
-		{separator = true},
 		{
 			title = 'Override Embedded ASS Styles',
 			hint = cur_override,
@@ -424,31 +422,21 @@ end
 -- Default menu items
 function create_default_menu_items()
 	return {
-		{title = t('Open URL / Stream Online'), value = 'script-message open-url-menu', icon = 'link'},
+		-- 1. File & Streaming
 		{title = t('Open file'), value = 'script-binding uosc/open-file', icon = 'folder_open'},
-		{separator = true},
-		{title = t('Subtitles'), value = 'script-binding uosc/subtitles'},
-		{title = t('Subtitle Appearance & Style'), items = get_subtitle_style_items()},
-		{title = t('Audio tracks'), value = 'script-binding uosc/audio'},
-		{title = t('Video tracks'), value = 'script-binding uosc/video'},
-		{title = t('Stream quality'), value = 'script-binding uosc/stream-quality'},
+		{title = t('Open URL / Stream Online'), value = 'script-message open-url-menu', icon = 'link', separator = true},
+
+		-- 2. Playlist & Navigation
 		{title = t('Playlist'), value = 'script-binding uosc/items'},
 		{title = t('Chapters'), value = 'script-binding uosc/chapters'},
 		{
 			title = t('Navigation'),
+			separator = true,
 			items = {
-				{
-					title = t('Next'),
-					hint = t('playlist or file'),
-					value = 'script-binding uosc/next',
-				},
-				{
-					title = t('Prev'),
-					hint = t('playlist or file'),
-					value = 'script-binding uosc/prev',
-				},
+				{title = t('Next'), hint = t('playlist or file'), value = 'script-binding uosc/next'},
+				{title = t('Prev'), hint = t('playlist or file'), value = 'script-binding uosc/prev'},
 				{title = t('First file'), value = 'script-binding uosc/first'},
-				{title = t('Last file'), value = 'script-binding uosc/last'},
+				{title = t('Last file'), value = 'script-binding uosc/last', separator = true},
 				{
 					title = t('Playback speed'),
 					items = {
@@ -458,40 +446,24 @@ function create_default_menu_items()
 						{title = '1.25x', value = 'set speed 1.25; show-text "Speed: 1.25x"'},
 						{title = '1.5x', value = 'set speed 1.5; show-text "Speed: 1.5x"'},
 						{title = '1.75x', value = 'set speed 1.75; show-text "Speed: 1.75x"'},
-						{title = '2.0x', value = 'set speed 2.0; show-text "Speed: 2.0x"'},
-						{separator = true},
+						{title = '2.0x', value = 'set speed 2.0; show-text "Speed: 2.0x"', separator = true},
 						{title = t('Reset speed (1.0x)'), value = 'set speed 1.0; show-text "Speed: 1.0x"'},
 					},
 				},
 				{title = t('Cycle Loop (Off / Playlist / Episode)'), value = 'script-message cycle-loop'},
-				{title = t('Shuffle'), value = 'cycle shuffle'},
-				{separator = true},
-				{title = t('Open file'), value = 'script-binding uosc/open-file'},
-				{title = t('Open URL'), value = 'script-message open-url-menu'},
-				{separator = true},
+				{title = t('Shuffle'), value = 'cycle shuffle', separator = true},
 				{title = t('Delete file & Next'), value = 'script-binding uosc/delete-file-next'},
 				{title = t('Delete file & Prev'), value = 'script-binding uosc/delete-file-prev'},
 				{title = t('Delete file & Quit'), value = 'script-binding uosc/delete-file-quit'},
 			},
 		},
+
+		-- 3. Core Media Controls: Video, Audio, Subtitles
 		{
-			title = t('Episode Tracker'),
+			title = t('Video'),
 			items = {
-				{title = 'Episode Status', value = 'script-message episode-tracker-ep-status'},
-				{title = 'TV Show Status', value = 'script-message episode-tracker-tv-status'},
-				{title = 'Open Last Played', value = 'script-message episode-tracker-last-played'},
-				{separator = true},
-				{title = 'Mark as Watched', value = 'script-message mark-watched'},
-				{title = 'Mark as Unwatched', value = 'script-message mark-unwatched'},
-			},
-		},
-		{
-			title = t('Utils'),
-			items = {
-				{
-					title = t('Subtitle Appearance & Style'),
-					items = get_subtitle_style_items(),
-				},
+				{title = t('Video tracks'), value = 'script-binding uosc/video'},
+				{title = t('Stream quality'), value = 'script-binding uosc/stream-quality', separator = true},
 				{
 					title = t('Aspect ratio'),
 					items = {
@@ -503,30 +475,73 @@ function create_default_menu_items()
 					},
 				},
 				{
-					title = t('Video filters'),
+					title = t('Video filters & Shaders'),
+					separator = true,
 					items = {
-						{title = t('Cycle Background Fill (Blur / Ambient / Off)'), value = 'script-message cycle-ambient-fill'},
-						{title = t('Toggle Deband'), value = 'cycle deband'},
+						{title = t('Cycle Ambient Fill (Blur / Ambient / Off)'), value = 'script-message cycle-ambient-fill'},
+						{title = t('Toggle Deband (Banding reduction)'), value = 'cycle deband'},
+						{title = t('Toggle CAS Sharpening'), value = 'change-list glsl-shaders toggle "~~/shaders/CAS.glsl"'},
 						{title = t('Toggle Deinterlace'), value = 'cycle deinterlace'},
 					},
 				},
-				{title = t('Pin Window (Always on Top)'), value = 'cycle ontop'},
-				{title = t('Audio devices'), value = 'script-binding uosc/audio-device'},
-				{title = t('Editions'), value = 'script-binding uosc/editions'},
 				{title = t('Screenshot'), value = 'async screenshot'},
 				{title = t('Screenshot (video only)'), value = 'async screenshot video'},
-				{title = t('Key bindings'), value = 'script-binding uosc/keybinds'},
-				{title = t('Show in directory'), value = 'script-binding uosc/show-in-directory'},
-				{title = t('Open config folder'), value = 'script-binding uosc/open-config-directory'},
-				{title = t('Update uosc'), value = 'script-binding uosc/update'},
-				{title = 'Check and update latest version', value = 'script-message check-rmn-update'},
 			},
 		},
-		{title = 'Check and update latest version', value = 'script-message check-rmn-update'},
+		{
+			title = t('Audio'),
+			items = {
+				{title = t('Audio tracks'), value = 'script-binding uosc/audio'},
+				{title = t('Audio output devices'), value = 'script-binding uosc/audio-device', separator = true},
+				{title = t('Toggle Mute'), value = 'cycle mute'},
+				{title = t('Audio Delay (-0.1s)'), value = 'add audio-delay -0.1'},
+				{title = t('Audio Delay (+0.1s)'), value = 'add audio-delay 0.1'},
+				{title = t('Reset Audio Delay'), value = 'set audio-delay 0'},
+			},
+		},
+		{
+			title = t('Subtitles'),
+			separator = true,
+			items = {
+				{title = t('Subtitle tracks'), value = 'script-binding uosc/subtitles'},
+				{title = t('Subtitle Appearance & Style'), items = get_subtitle_style_items(), separator = true},
+				{title = t('Toggle Subtitle Visibility'), value = 'cycle sub-visibility'},
+				{title = t('Subtitle Delay (-0.1s)'), value = 'add sub-delay -0.1'},
+				{title = t('Subtitle Delay (+0.1s)'), value = 'add sub-delay 0.1'},
+				{title = t('Reset Subtitle Delay'), value = 'set sub-delay 0'},
+			},
+		},
+
+		-- 4. Series & Episode Management
+		{
+			title = t('Episode Tracker'),
+			items = {
+				{title = t('Episode Status'), value = 'script-message episode-tracker-ep-status'},
+				{title = t('TV Show Status'), value = 'script-message episode-tracker-tv-status'},
+				{title = t('Open Last Played'), value = 'script-message episode-tracker-last-played', separator = true},
+				{title = t('Mark as Watched'), value = 'script-message mark-watched'},
+				{title = t('Mark as Unwatched'), value = 'script-message mark-unwatched'},
+			},
+		},
+
+		-- 5. Tools & Settings
+		{
+			title = t('Tools & Settings'),
+			separator = true,
+			items = {
+				{title = t('Pin Window (Always on Top)'), value = 'cycle ontop'},
+				{title = t('Key bindings'), value = 'script-binding uosc/keybinds'},
+				{title = t('Editions'), value = 'script-binding uosc/editions', separator = true},
+				{title = t('Show in directory'), value = 'script-binding uosc/show-in-directory'},
+				{title = t('Open config folder'), value = 'script-binding uosc/open-config-directory'},
+			},
+		},
+
+		-- 6. Application
+		{title = t('Check and update latest version'), value = 'script-message check-rmn-update'},
 		{title = t('Quit'), value = 'quit'},
 	}
 end
-
 --[[ STATE ]]
 
 display = {ax = 0, ay = 0, bx = 1280, by = 720, width = 1280, height = 720, initialized = false}
