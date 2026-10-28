@@ -39,7 +39,7 @@ local function ensure_cache_dir()
 	local info = utils.file_info(cache_dir)
 	if not info or not info.is_dir then
 		pcall(function()
-			mp.command_native({"subprocess", playback_only = false, args = {"powershell", "-NoProfile", "-Command", "New-Item -ItemType Directory -Path '" .. cache_dir .. "' -Force"}})
+			os.execute('mkdir "' .. cache_dir:gsub('/', '\\') .. '" 2>nul')
 		end)
 	end
 end
@@ -242,16 +242,16 @@ local function probe_and_queue_next(base_url, origin, ep_offset, max_lookahead)
 	local user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 	local args = {
 		"curl.exe",
-		"-I", "-L", "-s",
-		"--connect-timeout", "4",
-		"--max-time", "6",
+		"-I", "-L", "-s", "-k",
+		"--connect-timeout", "5",
+		"--max-time", "8",
 		"-A", user_agent,
-		candidate_url,
 	}
 	if origin and origin ~= "" then
-		table.insert(args, 8, "-e")
-		table.insert(args, 9, origin)
+		table.insert(args, "-e")
+		table.insert(args, origin)
 	end
+	table.insert(args, candidate_url)
 
 	mp.command_native_async({
 		name = "subprocess",
@@ -261,9 +261,16 @@ local function probe_and_queue_next(base_url, origin, ep_offset, max_lookahead)
 		args = args,
 	}, function(success, res, err)
 		if success and res and res.status == 0 and res.stdout then
-			local status = res.stdout:match("HTTP/%d%.?%d?%s+(%d%d%d)")
-			local code = tonumber(status)
-			if code and (code == 200 or code == 206 or (code >= 300 and code < 400)) then
+			local is_valid = false
+			for status_line in res.stdout:gmatch("HTTP/%d%.?%d?%s+(%d%d%d)") do
+				local code = tonumber(status_line)
+				if code and (code == 200 or code == 206 or (code >= 300 and code < 400)) then
+					is_valid = true
+					break
+				end
+			end
+
+			if is_valid then
 				msg.info("Autoloaded next online episode: " .. candidate_url)
 				mp.commandv("loadfile", candidate_url, "append")
 				mp.osd_message("Added next episode: E" .. tostring(next_ep_label), 3)
@@ -335,12 +342,21 @@ mp.register_event("file-loaded", function()
 		return
 	end
 
+	local origin = get_origin(path)
 	local canonical_key = get_canonical_key(path)
 	current_stream_key = canonical_key
 
-	if pending_resume_pos and pending_resume_pos > 15 then
-		local pos = pending_resume_pos
-		pending_resume_pos = nil
+	-- Ensure headers are injected on any stream file
+	local user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+	mp.set_property("user-agent", user_agent)
+	if origin then
+		mp.set_property("http-header-fields", "Referer: " .. origin .. ",Origin: " .. origin:gsub("/$", ""))
+	end
+
+	-- Check for saved watch-later position
+	local entry = stream_history[canonical_key]
+	if entry and entry.position and entry.position > 15 then
+		local pos = entry.position
 		mp.add_timeout(0.2, function()
 			mp.commandv("seek", pos, "absolute", "exact")
 			local mins = math.floor(pos / 60)
@@ -348,6 +364,11 @@ mp.register_event("file-loaded", function()
 			mp.osd_message(string.format("Resumed at %02d:%02d (Saved Stream Position)", mins, secs), 3)
 		end)
 	end
+
+	-- Trigger background probing for next episodes on any online stream
+	mp.add_timeout(2.0, function()
+		probe_and_queue_next(path, origin, 1, 3)
+	end)
 end)
 
 -- Periodic position record
@@ -560,6 +581,6 @@ end)
 
 -- Load initial history & clean old cache on startup
 load_history()
-prune_cache()
+mp.add_timeout(1.0, prune_cache)
 
 msg.info("open-url.lua (Online Stream Engine) loaded successfully")
