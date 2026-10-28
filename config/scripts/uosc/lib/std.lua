@@ -32,7 +32,7 @@ function ui_to_real_volume(ui_vol)
 	elseif ui_vol <= 200 then
 		return 100 + (ui_vol - 100) * 2
 	else
-		return 350
+		return 450
 	end
 end
 

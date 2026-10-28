@@ -289,7 +289,7 @@ end
 -- ============================================================================
 -- Stream Playback Engine (Header Injection & URL Loading)
 -- ============================================================================
-local function play_stream_url(url)
+local function play_stream_url(url, target_pos)
 	if not url or url == "" then return end
 	url = url:gsub("^%s+", ""):gsub("%s+$", ""):gsub('^["\']', ''):gsub('["\']$', '')
 
@@ -313,14 +313,23 @@ local function play_stream_url(url)
 
 	-- Check for saved watch-later position
 	local entry = stream_history[canonical_key]
-	if entry and entry.position and entry.position > 15 then
-		pending_resume_pos = entry.position
-	else
-		pending_resume_pos = nil
+	local resume_pos = target_pos
+	if not resume_pos and entry and entry.position and entry.position > 15 then
+		resume_pos = entry.position
 	end
 
-	mp.osd_message("Loading stream: " .. (filename ~= "" and filename or url:sub(1, 40)), 4)
-	msg.info("Playing stream: " .. url .. " (Canonical: " .. canonical_key .. ")")
+	if resume_pos and resume_pos > 15 then
+		pending_resume_pos = resume_pos
+		-- Pre-set start position so demuxer directly requests byte range without downloading prior parts!
+		mp.set_property("start", tostring(math.floor(resume_pos)))
+	else
+		pending_resume_pos = nil
+		mp.set_property("start", "none")
+	end
+
+	local display_title = (entry and entry.title and entry.title ~= "") and entry.title or (filename ~= "" and filename or url:sub(1, 40))
+	mp.osd_message("Loading stream: " .. display_title, 4)
+	msg.info("Playing stream: " .. url .. " (Canonical: " .. canonical_key .. ", Start: " .. tostring(pending_resume_pos or 0) .. "s)")
 
 	-- Load file
 	mp.commandv("loadfile", url, "replace")
@@ -354,15 +363,27 @@ mp.register_event("file-loaded", function()
 	end
 
 	-- Check for saved watch-later position
-	local entry = stream_history[canonical_key]
-	if entry and entry.position and entry.position > 15 then
-		local pos = entry.position
-		mp.add_timeout(0.2, function()
-			mp.commandv("seek", pos, "absolute", "exact")
-			local mins = math.floor(pos / 60)
-			local secs = math.floor(pos % 60)
-			mp.osd_message(string.format("Resumed at %02d:%02d (Saved Stream Position)", mins, secs), 3)
-		end)
+	if pending_resume_pos and pending_resume_pos > 15 then
+		local pos = pending_resume_pos
+		pending_resume_pos = nil
+		local mins = math.floor(pos / 60)
+		local secs = math.floor(pos % 60)
+		mp.osd_message(string.format("▶ Resumed at %02d:%02d (Saved Stream Position)", mins, secs), 3.5)
+		mp.set_property("start", "none")
+	else
+		local entry = stream_history[canonical_key]
+		if entry and entry.position and entry.position > 15 then
+			local cur_time = mp.get_property_number("time-pos") or 0
+			if cur_time < 10 then
+				local pos = entry.position
+				mp.add_timeout(0.1, function()
+					mp.commandv("seek", pos, "absolute", "exact")
+					local mins = math.floor(pos / 60)
+					local secs = math.floor(pos % 60)
+					mp.osd_message(string.format("▶ Resumed at %02d:%02d (Saved Stream Position)", mins, secs), 3.5)
+				end)
+			end
+		end
 	end
 
 	-- Trigger background probing for next episodes on any online stream
@@ -381,11 +402,19 @@ local function record_current_position()
 	local title = mp.get_property("media-title") or mp.get_property("filename") or current_stream_key
 	local path = mp.get_property("path") or ""
 
+	local save_pos = pos
+	local is_completed = false
+	if dur and dur > 0 and pos >= (dur * 0.92) then
+		save_pos = 0
+		is_completed = true
+	end
+
 	stream_history[current_stream_key] = {
-		position = pos,
+		position = save_pos,
 		duration = dur or 0,
 		title = title,
 		url = path,
+		completed = is_completed,
 		updated_at = os.time(),
 	}
 	save_history()
@@ -399,7 +428,6 @@ mp.register_event("shutdown", function()
 	record_current_position()
 	prune_cache()
 end)
-
 -- ============================================================================
 -- Clipboard Helper
 -- ============================================================================
@@ -415,26 +443,89 @@ end
 -- ============================================================================
 -- Interactive uosc Menu
 -- ============================================================================
+local function get_recent_history_items(max_count)
+	local sorted = {}
+	for k, v in pairs(stream_history) do
+		if v and (v.url or v.title) then
+			table.insert(sorted, {key = k, data = v})
+		end
+	end
+	table.sort(sorted, function(a, b) return (a.data.updated_at or 0) > (b.data.updated_at or 0) end)
+
+	local items = {}
+	for i = 1, math.min(max_count or 10, #sorted) do
+		local entry = sorted[i]
+		local d = entry.data
+		local pos = d.position or 0
+		local dur = d.duration or 0
+		local pct = dur > 0 and math.floor((pos / dur) * 100) or 0
+		local mins = math.floor(pos / 60)
+		local secs = math.floor(pos % 60)
+		local dur_mins = math.floor(dur / 60)
+		local dur_secs = math.floor(dur % 60)
+
+		local time_str = ""
+		if d.completed then
+			time_str = "Completed (Replay from 00:00)"
+		elseif dur > 0 then
+			time_str = string.format("%02d:%02d / %02d:%02d (%d%%)", mins, secs, dur_mins, dur_secs, pct)
+		elseif pos > 0 then
+			time_str = string.format("%02d:%02d", mins, secs)
+		else
+			time_str = "Watched"
+		end
+
+		local title = d.title or entry.key
+		if title:match("^https?://") then
+			local _, fn = get_canonical_key(title)
+			title = fn ~= "" and fn or title:sub(1, 40)
+		end
+
+		table.insert(items, {
+			title = title,
+			hint = time_str,
+			icon = "play_arrow",
+			value = "script-message open-url-load-history " .. entry.key,
+		})
+	end
+	return items
+end
+
 local function open_url_prompt()
 	local clip = get_clipboard_text()
+	local recent_items = get_recent_history_items(8)
+
+	local palette_items = {}
+	if #recent_items > 0 then
+		table.insert(palette_items, {
+			title = "─── Recently Watched (Click to Resume) ───",
+			align = "center",
+			muted = true,
+			selectable = false,
+		})
+		for _, item in ipairs(recent_items) do
+			table.insert(palette_items, item)
+		end
+	else
+		table.insert(palette_items, {
+			title = "Type or paste link and press Enter",
+			align = "center",
+			muted = true,
+			italic = true,
+			selectable = false,
+		})
+	end
+
 	local menu_data = {
 		type = "open-url-input",
-		title = "Paste or Type Stream URL...",
-		footnote = "Press Enter to load and stream the video",
+		title = "Paste / Enter Stream URL",
+		footnote = "Paste link or click a recently watched stream to resume",
 		search_style = "palette",
 		search_debounce = "submit",
 		search_suggestion = (clip and is_web_url(clip)) and clip or "",
 		on_search = "script-message open-url-load",
 		on_paste = "script-message open-url-load",
-		items = {
-			{
-				title = "Type or paste link and press Enter",
-				align = "center",
-				muted = true,
-				italic = true,
-				selectable = false,
-			},
-		},
+		items = palette_items,
 		keep_open = false,
 	}
 	local ok, json = pcall(utils.format_json, menu_data)
@@ -457,62 +548,60 @@ local function open_url_menu()
 			hint = preview,
 			value = "script-message open-url-play-clip",
 			bold = true,
-		})
+		end)
 	end
 
 	table.insert(menu_items, {
-		title = "Paste / Enter URL (Ctrl+V)",
+		title = "Enter Stream URL...",
 		value = "script-message open-url-prompt",
-		hint = "Paste or type link",
-	})
+		hint = "Type or paste link",
+		icon = "edit",
+		separator = true,
+	end)
 
-	table.insert(menu_items, {separator = true})
-
-	-- History submenu
-	local hist_items = {}
-	local sorted_history = {}
-	for k, v in pairs(stream_history) do
-		table.insert(sorted_history, {key = k, data = v})
-	end
-	table.sort(sorted_history, function(a, b) return (a.data.updated_at or 0) > (b.data.updated_at or 0) end)
-
-	for i = 1, math.min(8, #sorted_history) do
-		local item = sorted_history[i]
-		local pos = item.data.position or 0
-		local dur = item.data.duration or 0
-		local pct = dur > 0 and math.floor((pos / dur) * 100) or 0
-		local mins = math.floor(pos / 60)
-		local secs = math.floor(pos % 60)
-		local hint_text = string.format("%02d:%02d (%d%%)", mins, secs, pct)
-
-		table.insert(hist_items, {
-			title = item.data.title or item.key,
-			hint = hint_text,
-			value = "script-message open-url-load-history " .. item.key,
-		})
-	end
-
-	if #hist_items > 0 then
+	-- Recently Watched Section
+	local recent_items = get_recent_history_items(10)
+	if #recent_items > 0 then
 		table.insert(menu_items, {
-			title = "Recent Stream History",
-			items = hist_items,
-		})
+			title = "Recently Watched Streams",
+			hint = tostring(#recent_items) .. " saved",
+			icon = "history",
+			items = recent_items,
+		end)
+
+		-- Show top recent items directly in the main list for 1-click instant resume!
+		for i = 1, math.min(3, #recent_items) do
+			local item = recent_items[i]
+			table.insert(menu_items, {
+				title = "Resume: " .. item.title,
+				hint = item.hint,
+				icon = "play_arrow",
+				value = item.value,
+			end)
+		end
+
+		table.insert(menu_items, {
+			title = "Clear Stream Watch History",
+			value = "script-message open-url-clear-history",
+			icon = "delete",
+			separator = true,
+		end)
 	end
 
-	-- Settings
+	-- Engine Settings
 	local cache_mb = get_cache_size_mb()
 	table.insert(menu_items, {
 		title = "Autoload Next Episodes",
 		hint = autoload_episodes and "Enabled" or "Disabled",
 		value = "script-message open-url-toggle-autoload",
 		active = autoload_episodes,
-	})
+	end)
 
 	table.insert(menu_items, {
 		title = "Purge Stream Disk Cache",
 		hint = tostring(cache_mb) .. " MB",
 		value = "script-message open-url-purge-cache",
-	})
+	end)
 
 	local menu_data = {
 		type = "open-url-master",
@@ -551,10 +640,17 @@ end)
 mp.register_script_message("open-url-load-history", function(key)
 	local entry = stream_history[key]
 	if entry and entry.url then
-		play_stream_url(entry.url)
+		play_stream_url(entry.url, entry.position)
 	else
 		mp.osd_message("History entry not found", 2)
 	end
+end)
+
+mp.register_script_message("open-url-clear-history", function()
+	stream_history = {}
+	save_history()
+	mp.osd_message("Stream watch history cleared", 2)
+	open_url_menu()
 end)
 
 mp.register_script_message("open-url-toggle-autoload", function()
