@@ -799,7 +799,7 @@ end
 
 -- Audio Boost 200+ Architecture (Maximum Perceived Loudness Engine)
 local NORMAL_AF = 'lavfi=[acompressor=threshold=0.25:ratio=3:attack=15:release=150:makeup=2.0:knee=2.8,asoftclip=type=tanh:threshold=0.85:output=0.98]'
-local BOOST_AF = 'lavfi=[dynaudnorm=f=75:g=25:p=0.99:m=30:r=0.9:b=1,volume=volume=12dB:precision=fixed,alimiter=level_in=1:level_out=1:limit=0.99:attack=5:release=50]'
+local BOOST_AF = 'lavfi=[highpass=f=30,equalizer=f=1200:width_type=q:width=1.0:g=3.0,equalizer=f=3400:width_type=q:width=1.2:g=3.5,dynaudnorm=f=150:g=17:p=0.98:m=24:r=0.92:s=12:b=1,asoftclip=type=tanh:threshold=0.88:output=0.98,alimiter=level_in=1:level_out=1:limit=0.98:attack=7:release=100:asc=1]'
 local boost_active = false
 
 local function set_boost_mode(enable, show_osd)
