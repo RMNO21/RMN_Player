@@ -299,6 +299,136 @@ function update_config()
 end
 update_config()
 
+-- ============================================================================
+-- Recent Files Tracker & Menu Engine
+-- ============================================================================
+local function get_rmn_config_dir()
+	local ok, dir = pcall(function() return mp.command_native({'expand-path', '~~home/'}) end)
+	if ok and dir and dir ~= '' then return dir end
+	local ok2, dir2 = pcall(function() return mp.command_native({'expand-path', '~~/'}) end)
+	if ok2 and dir2 and dir2 ~= '' then return dir2 end
+	local appdata = os.getenv('APPDATA')
+	if appdata then return appdata .. '/RMN-Player' end
+	return '.'
+end
+
+local recent_files_path = get_rmn_config_dir() .. '/recent-files.json'
+local recent_files = {}
+
+local function load_recent_files()
+	local f = io.open(recent_files_path, 'r')
+	if f then
+		local c = f:read('*a')
+		f:close()
+		if c and c ~= '' then
+			local ok, data = pcall(utils.parse_json, c)
+			if ok and type(data) == 'table' then
+				recent_files = data
+				return
+			end
+		end
+	end
+	recent_files = {}
+end
+
+local function save_recent_files()
+	if not recent_files then return end
+	local ok, json_str = pcall(utils.format_json, recent_files)
+	if ok and json_str then
+		local f = io.open(recent_files_path, 'w')
+		if f then
+			f:write(json_str)
+			f:close()
+		end
+	end
+end
+
+local function record_recent_file()
+	local path = mp.get_property('path')
+	if not path or path == '' then return end
+	if path:match('^%a[%a%d_]+://') then return end
+
+	local pos = mp.get_property_number('time-pos') or 0
+	local dur = mp.get_property_number('duration') or 0
+	local title = mp.get_property('media-title') or mp.get_property('filename') or path:match('([^/\\]+)$') or path
+
+	local is_completed = false
+	local save_pos = pos
+	if dur > 0 and pos >= (dur * 0.92) then
+		save_pos = 0
+		is_completed = true
+	end
+
+	for i = #recent_files, 1, -1 do
+		if recent_files[i].path == path then
+			table.remove(recent_files, i)
+		end
+	end
+
+	table.insert(recent_files, 1, {
+		path = path,
+		title = title,
+		position = save_pos,
+		duration = dur,
+		completed = is_completed,
+		updated_at = os.time(),
+	})
+
+	while #recent_files > 25 do
+		table.remove(recent_files)
+	end
+
+	save_recent_files()
+end
+
+local function get_recent_files_items()
+	load_recent_files()
+	if #recent_files == 0 then
+		return {
+			{title = t('No recent files'), align = 'center', muted = true, italic = true, selectable = false},
+		}
+	end
+
+	local items = {}
+	for i = 1, math.min(12, #recent_files) do
+		local entry = recent_files[i]
+		local pos = entry.position or 0
+		local dur = entry.duration or 0
+		local pct = dur > 0 and math.floor((pos / dur) * 100) or 0
+		local mins = math.floor(pos / 60)
+		local secs = math.floor(pos % 60)
+		local dur_mins = math.floor(dur / 60)
+		local dur_secs = math.floor(dur % 60)
+
+		local time_str = ""
+		if entry.completed then
+			time_str = "Completed"
+		elseif dur > 0 and pos > 10 then
+			time_str = string.format("%02d:%02d / %02d:%02d (%d%%)", mins, secs, dur_mins, dur_secs, pct)
+		elseif pos > 10 then
+			time_str = string.format("%02d:%02d", mins, secs)
+		end
+
+		table.insert(items, {
+			title = entry.title or entry.path:match('([^/\\]+)$') or entry.path,
+			hint = time_str ~= "" and time_str or nil,
+			icon = 'play_arrow',
+			value = 'script-message play-recent-file ' .. tostring(i),
+		})
+	end
+
+	table.insert(items, {
+		title = t('Clear Recent Files'),
+		value = 'script-message clear-recent-files',
+		icon = 'delete',
+		separator = true,
+	})
+
+	return items
+end
+
+load_recent_files()
+
 -- Helper function for subtitle appearance menu
 local function get_subtitle_style_items()
 	local cur_font = mp.get_property('sub-font') or 'sans-serif'
@@ -424,7 +554,8 @@ function create_default_menu_items()
 	return {
 		-- 1. File & Streaming
 		{title = t('Open file'), value = 'script-binding uosc/open-file', icon = 'folder_open'},
-		{title = t('Open URL / Stream Online'), value = 'script-message open-url-menu', icon = 'link', separator = true},
+		{title = t('Open URL / Stream Online'), value = 'script-message open-url-menu', icon = 'link'},
+		{title = t('Recently Played'), items = get_recent_files_items(), icon = 'history', separator = true},
 
 		-- 2. Playlist & Navigation
 		{title = t('Playlist'), value = 'script-binding uosc/items'},
@@ -835,6 +966,8 @@ mp.register_event('file-loaded', function()
 	itable_delete_value(state.history, path)
 	state.history[#state.history + 1] = path
 	set_state('path', path)
+	record_recent_file()
+	mp.set_property('start', 'none')
 
 	-- Flash top bar on requested file types
 	for _, type in ipairs(config.top_bar_flash_on) do
@@ -851,6 +984,7 @@ mp.register_event('file-loaded', function()
 	end
 end)
 mp.register_event('end-file', function(event)
+	record_recent_file()
 	set_state('path', nil)
 	if event.reason == 'eof' then
 		file_end_timer:kill()
@@ -1368,6 +1502,36 @@ end)
 mp.register_script_message('flash-elements', function(elements) Elements:flash(comma_split(elements)) end)
 mp.register_script_message('overwrite-binding', function(name, command) key_binding_overwrites[name] = command end)
 mp.register_script_message('disable-elements', function(id, elements) Manager:disable(id, elements) end)
+mp.register_script_message('play-recent-file', function(index_str)
+	local idx = tonumber(index_str)
+	local item = recent_files[idx]
+	if item and item.path then
+		if item.position and item.position > 15 and not item.completed then
+			mp.set_property('start', tostring(math.floor(item.position)))
+		else
+			mp.set_property('start', 'none')
+		end
+		mp.commandv('loadfile', item.path, 'replace')
+		local display_title = item.title or item.path:match('([^/\\]+)$') or item.path
+		mp.osd_message('Playing: ' .. display_title, 3)
+	else
+		mp.osd_message('File not found in history', 2)
+	end
+end)
+
+mp.register_script_message('clear-recent-files', function()
+	recent_files = {}
+	save_recent_files()
+	mp.osd_message('Recently played history cleared', 2.5)
+end)
+
+mp.add_periodic_timer(5, record_recent_file)
+mp.register_event("shutdown", record_recent_file)
+
+mp.observe_property('pause', 'bool', function(_, paused)
+	if paused then record_recent_file() end
+end)
+
 mp.register_script_message('add-volume', function(delta)
 	delta = tonumber(delta) or 5
 	local current_ui = state.volume or real_to_ui_volume(mp.get_property_number('volume', 100))

@@ -627,7 +627,6 @@ do
 	end
 
 	function get_menu_items()
-		if menu_items then return menu_items end
 
 		local all_user_bindings = get_all_user_bindings()
 		local main_menu = {items = {}, items_by_command = {}}
