@@ -526,6 +526,16 @@ local autoloaded
 local added_entries = {}
 local autoloaded_dir
 
+local is_windows = mp.get_property_native("platform") == "windows"
+local function normalize_path_cmp(p)
+    if not p then return "" end
+    p = p:gsub("\\", "/")
+    if is_windows then
+        p = p:lower()
+    end
+    return p
+end
+
 local function scan_dir(path, current_file, current_media, dir_mode, separator, dir_depth, total_files, extensions)
     if dir_depth == MAX_DIR_STACK then
         return
@@ -546,7 +556,7 @@ local function scan_dir(path, current_file, current_media, dir_mode, separator, 
     filter(files, function(v)
         local full_path = prefix .. v
         -- Always accept current file
-        if full_path == current_file then
+        if normalize_path_cmp(full_path) == normalize_path_cmp(current_file) then
             return true
         end
         if o.ignore_hidden and v:match("^%.") then
@@ -676,9 +686,10 @@ local function find_and_add_entries()
     end
 
     -- Find the current pl entry in the sorted dir list
+    local norm_path = normalize_path_cmp(path)
     local current
     for i = 1, #files do
-        if files[i] == path then
+        if normalize_path_cmp(files[i]) == norm_path then
             current = i
             break
         end
@@ -689,9 +700,9 @@ local function find_and_add_entries()
     end
 
     for _, entry in ipairs(pl) do
-        added_entries[entry.filename] = true
+        added_entries[normalize_path_cmp(entry.filename)] = true
     end
-    added_entries[path] = true
+    added_entries[norm_path] = true
 
     local append = {[-1] = {}, [1] = {}}
     for direction = -1, 1, 2 do
@@ -702,7 +713,8 @@ local function find_and_add_entries()
                 break
             end
 
-            if not added_entries[file] then
+            local norm_file = normalize_path_cmp(file)
+            if not added_entries[norm_file] then
                 if direction == -1 then
                     msg.verbose("Prepending " .. file)
                     table.insert(append[-1], 1, {file, pl_current + i * direction + 1})
@@ -714,7 +726,7 @@ local function find_and_add_entries()
                         mp.commandv("loadfile", file, "append")
                     end
                 end
-                added_entries[file] = true
+                added_entries[norm_file] = true
             end
         end
         if pl_count == 1 and direction == -1 and #append[-1] > 0 then
