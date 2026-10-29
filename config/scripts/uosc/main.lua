@@ -1121,7 +1121,7 @@ end
 --[[ STATE HOOKS ]]
 
 -- Audio Boost 200+ Architecture (Maximum Perceived Loudness Engine)
-local NORMAL_AF = 'lavfi=[acompressor=threshold=0.25:ratio=3:attack=15:release=150:makeup=2.0:knee=2.8,asoftclip=type=tanh:threshold=0.85:output=0.98]'
+local NORMAL_AF = 'lavfi=[highpass=f=45,equalizer=f=450:width_type=q:width=1.2:g=-1.5,equalizer=f=3000:width_type=q:width=1.0:g=2.0,equalizer=f=10000:width_type=q:width=0.8:g=1.5,alimiter=level_in=1:level_out=1:limit=0.99:attack=5:release=50:asc=0]'
 local BOOST_AF = 'lavfi=[highpass=f=60,equalizer=f=1400:width_type=q:width=1.0:g=3.5,equalizer=f=3200:width_type=q:width=1.2:g=4.0,dynaudnorm=f=180:g=21:p=0.98:m=28:r=0.92:s=12:b=1,volume=volume=5dB:precision=fixed,asoftclip=type=tanh:threshold=0.85:output=0.98,alimiter=level_in=1:level_out=1:limit=0.99:attack=5:release=80:asc=1]'
 local boost_active = false
 

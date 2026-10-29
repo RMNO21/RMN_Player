@@ -1,11 +1,11 @@
 {
   "name": "RMN-Player",
-  "version": "1.3.4",
-  "version_code": 134,
+  "version": "1.3.5",
+  "version_code": 135,
   "release_date": "2026-10-29",
   "channel": "stable",
   "repository": "RMNO21/RMN_Player",
-  "changelog": "Fix: Filter out container promo domain titles (e.g. DonyayeSerial.com) in Recently Played history, preserving actual series filename and episode info.",
+  "changelog": "Improvement: Eliminate audio echo/reverb caused by dynamic compressor pumping and surround downmix phase mismatch; add studio dialogue clarity EQ and transparent peak limiter for normal listening mode.",
   "html_url": "https://github.com/RMNO21/RMN_Player",
   "download_url": "https://github.com/RMNO21/RMN_Player/archive/refs/heads/main.zip"
 }
