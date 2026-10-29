@@ -1,11 +1,11 @@
 {
   "name": "RMN-Player",
-  "version": "1.3.5",
-  "version_code": 135,
+  "version": "1.3.6",
+  "version_code": 136,
   "release_date": "2026-10-29",
   "channel": "stable",
   "repository": "RMNO21/RMN_Player",
-  "changelog": "Improvement: Eliminate audio echo/reverb caused by dynamic compressor pumping and surround downmix phase mismatch; add studio dialogue clarity EQ and transparent peak limiter for normal listening mode.",
+  "changelog": "Performance: Instant stream link switching while playing by cleanly stopping active demuxer/decoders and reducing initial network probe chunk size.",
   "html_url": "https://github.com/RMNO21/RMN_Player",
   "download_url": "https://github.com/RMNO21/RMN_Player/archive/refs/heads/main.zip"
 }

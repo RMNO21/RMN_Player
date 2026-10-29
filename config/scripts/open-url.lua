@@ -328,10 +328,19 @@ local function play_stream_url(url, target_pos)
 	end
 
 	local display_title = (entry and entry.title and entry.title ~= "") and entry.title or (filename ~= "" and filename or url:sub(1, 40))
-	mp.osd_message("Loading stream: " .. display_title, 4)
+	mp.osd_message("Connecting to stream: " .. display_title, 4)
 	msg.info("Playing stream: " .. url .. " (Canonical: " .. canonical_key .. ", Start: " .. tostring(pending_resume_pos or 0) .. "s)")
 
-	-- Load file
+	-- If playback is active, save position and immediately stop old playback.
+	-- This kills old background network connections, flushes video/audio decoders and cache,
+	-- putting the player in clean idle state so the new stream loads at maximum speed!
+	local cur_path = mp.get_property("path")
+	if cur_path and cur_path ~= "" then
+		record_current_position()
+		mp.command("stop")
+	end
+
+	-- Load file cleanly into idle player
 	mp.commandv("loadfile", url, "replace")
 
 	-- Background probe next episodes

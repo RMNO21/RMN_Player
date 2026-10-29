@@ -1683,6 +1683,11 @@ mp.register_script_message('play-recent-file', function(index_str)
 	local idx = tonumber(index_str)
 	local item = recent_files[idx]
 	if item and item.path then
+		local cur_path = mp.get_property('path')
+		if cur_path and cur_path ~= '' then
+			record_recent_file()
+			mp.command('stop')
+		end
 		if item.position and item.position > 15 and not item.completed then
 			mp.set_property('start', tostring(math.floor(item.position)))
 		else
