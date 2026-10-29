@@ -1,11 +1,11 @@
 {
   "name": "RMN-Player",
-  "version": "1.3.2",
-  "version_code": 132,
+  "version": "1.3.3",
+  "version_code": 133,
   "release_date": "2026-10-29",
   "channel": "stable",
   "repository": "RMNO21/RMN_Player",
-  "changelog": "Feature: Persistent Recently Played history for local files with auto-resume and clear button; Hide open file/URL buttons from on-screen timeline controls bar.",
+  "changelog": "Feature: Smart TV show deduplication in Recently Played (local files and streams) - automatically retains only the last meaningfully watched episode per series and ignores accidental previews.",
   "html_url": "https://github.com/RMNO21/RMN_Player",
   "download_url": "https://github.com/RMNO21/RMN_Player/archive/refs/heads/main.zip"
 }

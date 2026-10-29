@@ -443,21 +443,141 @@ end
 -- ============================================================================
 -- Interactive uosc Menu
 -- ============================================================================
-local function get_recent_history_items(max_count)
-	local sorted = {}
-	for k, v in pairs(stream_history) do
-		if v and (v.url or v.title) then
-			table.insert(sorted, {key = k, data = v})
+local function parse_series_info(text)
+	if not text or text == "" then return nil, nil, nil end
+	local filename = text:match("([^/\\]+)$") or text
+	filename = filename:gsub("%?.*$", "")
+	filename = filename:gsub("%.%w%w%w?%w?$", "")
+
+	local norm = filename:gsub("[%._]+", " ")
+
+	-- Pattern 1: S01E02, S1E2, s01e02
+	local s, e = norm:match("[%s%[]+[sS](%d+)[%s%.%-_]*[eE](%d+)")
+	if s and e then
+		local prefix = norm:match("^(.-)[%s%[]+[sS]" .. s)
+		if prefix then
+			local skey = prefix:gsub("[^%w]+", " "):match("^%s*(.-)%s*$"):lower()
+			if #skey >= 2 then return skey, tonumber(s), tonumber(e) end
 		end
 	end
-	table.sort(sorted, function(a, b) return (a.data.updated_at or 0) > (b.data.updated_at or 0) end)
+
+	-- Pattern 2: Season 2 ... Episode 4
+	local s2, e2 = norm:match("[%s%[]+[sS]eason[%s%.%-_]*(%d+)[%s%.%-_]+[eE]p?i?s?o?d?e?[%s%.%-_]*(%d+)")
+	if s2 and e2 then
+		local p2 = norm:match("^(.-)[%s%[]+[sS]eason")
+		if p2 then
+			local skey = p2:gsub("[^%w]+", " "):match("^%s*(.-)%s*$"):lower()
+			if #skey >= 2 then return skey, tonumber(s2), tonumber(e2) end
+		end
+	end
+
+	-- Pattern 3: 4x09 or 04x09
+	local s3, e3 = norm:match("[%s%[]+(%d+)[xX](%d+)")
+	if s3 and e3 then
+		local p3 = norm:match("^(.-)[%s%[]+" .. s3 .. "[xX]")
+		if p3 then
+			local skey = p3:gsub("[^%w]+", " "):match("^%s*(.-)%s*$"):lower()
+			if #skey >= 2 then return skey, tonumber(s3), tonumber(e3) end
+		end
+	end
+
+	-- Pattern 4: EP05 or Episode 05 or E05 (standalone episode without season)
+	local e4 = norm:match("[%s%[]+[eE][pP]?[iI]?[sS]?[oO]?[dD]?[eE]?[%s%.%-_]*(%d+)")
+	if e4 then
+		local p4 = norm:match("^(.-)[%s%[]+[eE][pP]?")
+		if p4 then
+			local skey = p4:gsub("[^%w]+", " "):match("^%s*(.-)%s*$"):lower()
+			if #skey >= 2 then return skey, 1, tonumber(e4) end
+		end
+	end
+
+	return nil, nil, nil
+end
+
+local function get_recent_history_items(max_count)
+	local series_groups = {}
+	local group_order = {}
+
+	for k, v in pairs(stream_history) do
+		if v and (v.url or v.title) then
+			local title = v.title or k
+			local skey, season, ep = parse_series_info(title)
+			if not skey and v.url then
+				skey, season, ep = parse_series_info(v.url)
+			end
+
+			local item_data = {
+				key = k,
+				data = v,
+				title = title,
+				season = season or 1,
+				episode = ep or 1,
+				position = v.position or 0,
+				duration = v.duration or 0,
+				completed = v.completed or false,
+				updated_at = v.updated_at or 0,
+			}
+
+			if skey then
+				if not series_groups[skey] then
+					series_groups[skey] = {}
+					table.insert(group_order, {type = "series", key = skey})
+				end
+				table.insert(series_groups[skey], item_data)
+			else
+				table.insert(group_order, {type = "standalone", data = item_data})
+			end
+		end
+	end
+
+	-- For each series, select the best / last watched episode:
+	-- Discard accidental previews (< 45s and not completed) if any meaningful episodes exist.
+	-- Prefer actively in-progress episodes over completed earlier episodes.
+	local candidate_list = {}
+	for _, grp in ipairs(group_order) do
+		if grp.type == "standalone" then
+			table.insert(candidate_list, grp.data)
+		elseif grp.type == "series" and series_groups[grp.key] then
+			local ep_list = series_groups[grp.key]
+			series_groups[grp.key] = nil
+
+			local meaningful = {}
+			for _, e in ipairs(ep_list) do
+				local is_mean = e.completed or (e.position >= 45) or (e.duration > 0 and (e.position / e.duration) >= 0.03)
+				if is_mean then
+					table.insert(meaningful, e)
+				end
+			end
+
+			local pool = #meaningful > 0 and meaningful or ep_list
+			table.sort(pool, function(a, b)
+				local a_in_progress = (not a.completed) and (a.position >= 45) and 1 or 0
+				local b_in_progress = (not b.completed) and (b.position >= 45) and 1 or 0
+				if a_in_progress ~= b_in_progress then
+					return a_in_progress > b_in_progress
+				end
+				if (a.updated_at or 0) ~= (b.updated_at or 0) then
+					return (a.updated_at or 0) > (b.updated_at or 0)
+				end
+				local a_num = a.season * 10000 + a.episode
+				local b_num = b.season * 10000 + b.episode
+				return a_num > b_num
+			end)
+
+			table.insert(candidate_list, pool[1])
+		end
+	end
+
+	table.sort(candidate_list, function(a, b)
+		return (a.updated_at or 0) > (b.updated_at or 0)
+	end)
 
 	local items = {}
-	for i = 1, math.min(max_count or 10, #sorted) do
-		local entry = sorted[i]
-		local d = entry.data
-		local pos = d.position or 0
-		local dur = d.duration or 0
+	for i = 1, math.min(max_count or 10, #candidate_list) do
+		local cand = candidate_list[i]
+		local d = cand.data
+		local pos = cand.position
+		local dur = cand.duration
 		local pct = dur > 0 and math.floor((pos / dur) * 100) or 0
 		local mins = math.floor(pos / 60)
 		local secs = math.floor(pos % 60)
@@ -465,7 +585,7 @@ local function get_recent_history_items(max_count)
 		local dur_secs = math.floor(dur % 60)
 
 		local time_str = ""
-		if d.completed then
+		if cand.completed then
 			time_str = "Completed (Replay from 00:00)"
 		elseif dur > 0 then
 			time_str = string.format("%02d:%02d / %02d:%02d (%d%%)", mins, secs, dur_mins, dur_secs, pct)
@@ -475,7 +595,7 @@ local function get_recent_history_items(max_count)
 			time_str = "Watched"
 		end
 
-		local title = d.title or entry.key
+		local title = cand.title or cand.key
 		if title:match("^https?://") then
 			local _, fn = get_canonical_key(title)
 			title = fn ~= "" and fn or title:sub(1, 40)
@@ -485,7 +605,7 @@ local function get_recent_history_items(max_count)
 			title = title,
 			hint = time_str,
 			icon = "play_arrow",
-			value = "script-message open-url-load-history " .. entry.key,
+			value = "script-message open-url-load-history " .. cand.key,
 		})
 	end
 	return items
