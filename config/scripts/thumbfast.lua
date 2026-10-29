@@ -395,6 +395,10 @@ end
 local info_timer = nil
 
 local function info(w, h)
+    calc_dimensions()
+    w = w or effective_w
+    h = h or effective_h
+
     local rotate = properties["video-params"] and properties["video-params"]["rotate"]
     local image = properties["current-tracks/video"] and properties["current-tracks/video"]["image"]
     local albumart = image and properties["current-tracks/video"]["albumart"]
@@ -406,14 +410,21 @@ local function info(w, h)
         (image and not albumart) or
         force_disabled
 
-    if info_timer then
-        info_timer:kill()
-        info_timer = nil
-    elseif has_vid == 0 or (rotate == nil and not disabled) then
-        info_timer = mp.add_timeout(0.05, function() info(w, h) end)
+    if disabled and not force_disabled then
+        if not info_timer then
+            info_timer = mp.add_timeout(0.1, function()
+                info_timer = nil
+                info()
+            end)
+        end
+    else
+        if info_timer then
+            info_timer:kill()
+            info_timer = nil
+        end
     end
 
-    local json, err = mp.utils.format_json({width=w * options.scale_factor, height=h * options.scale_factor, scale_factor=options.scale_factor, disabled=disabled, available=true, socket=options.socket, thumbnail=options.thumbnail, overlay_id=options.overlay_id})
+    local json, err = mp.utils.format_json({width=(w or 0) * options.scale_factor, height=(h or 0) * options.scale_factor, scale_factor=options.scale_factor, disabled=disabled, available=true, socket=options.socket, thumbnail=options.thumbnail, overlay_id=options.overlay_id})
     if pre_0_30_0 then
         mp.command_native({"script-message", "thumbfast-info", json})
     else
@@ -457,18 +468,43 @@ local function spawn(time)
     local vid = properties["vid"]
     has_vid = vid or 0
 
+    local is_net = properties["demuxer-via-network"] or (type(path) == "string" and (path:match("^https?://") ~= nil or path:match("^ytdl://") ~= nil))
+
     local args = {
         mpv_path, "--no-config", "--msg-level=all=no", "--idle", "--pause", "--keep-open=always", "--really-quiet", "--no-terminal",
-        "--load-scripts=no", "--osc=no", "--ytdl=no", "--load-stats-overlay=no", "--load-osd-console=no", "--load-auto-profiles=no",
+        "--load-scripts=no", "--osc=no", "--load-stats-overlay=no", "--load-osd-console=no", "--load-auto-profiles=no",
         "--edition="..(properties["edition"] or "auto"), "--vid="..(vid or "auto"), "--no-sub", "--no-audio",
-        "--start="..time, allow_fast_seek and "--hr-seek=no" or "--hr-seek=yes",
-        "--ytdl-format=worst", "--demuxer-readahead-secs=0", "--demuxer-max-bytes=128KiB",
-        "--vd-lavc-skiploopfilter=all", "--vd-lavc-software-fallback=1", "--vd-lavc-fast", "--vd-lavc-threads=2", "--hwdec="..(options.hwdec and "auto" or "no"),
+        "--start="..time, (is_net or allow_fast_seek) and "--hr-seek=no" or "--hr-seek=yes",
+        "--vd-lavc-skiploopfilter=all", "--vd-lavc-software-fallback=1", "--vd-lavc-fast", "--vd-lavc-threads=4", "--hwdec="..(options.hwdec and "auto" or "no"),
         "--vf="..vf_string(filters_all, true),
         "--sws-scaler=fast-bilinear",
         "--video-rotate="..last_rotate,
         "--ovc=rawvideo", "--of=image2", "--ofopts=update=1", "--o="..options.thumbnail
     }
+
+    if is_net then
+        table.insert(args, "--ytdl=yes")
+        table.insert(args, "--ytdl-format=worst")
+        table.insert(args, "--demuxer-readahead-secs=10")
+        table.insert(args, "--demuxer-max-bytes=16MiB")
+        table.insert(args, "--stream-buffer-size=256KiB")
+        table.insert(args, "--demuxer-lavf-analyzeduration=1.0")
+        table.insert(args, "--demuxer-lavf-probesize=256000")
+        table.insert(args, "--stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_delay_max=2")
+        table.insert(args, "--tls-verify=no")
+
+        local user_agent = mp.get_property("user-agent") or "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+        table.insert(args, "--user-agent=" .. user_agent)
+
+        local headers = mp.get_property("http-header-fields")
+        if headers and headers ~= "" then
+            table.insert(args, "--http-header-fields=" .. headers)
+        end
+    else
+        table.insert(args, "--ytdl=no")
+        table.insert(args, "--demuxer-readahead-secs=0")
+        table.insert(args, "--demuxer-max-bytes=128KiB")
+    end
 
     if not pre_0_30_0 then
         table.insert(args, "--sws-allow-zimg=no")
@@ -638,7 +674,9 @@ end
 
 local function seek(fast)
     if last_seek_time then
-        run("async seek " .. last_seek_time .. (fast and " absolute+keyframes" or " absolute+exact"))
+        local is_net = properties["demuxer-via-network"]
+        local mode = (is_net or fast) and " absolute+keyframes" or " absolute+exact"
+        run("async seek " .. last_seek_time .. mode)
     end
 end
 
@@ -828,7 +866,7 @@ local function watch_changes()
     last_crop = properties["video-crop"]
     last_has_vid = has_vid
 
-    if not spawned and not disabled and options.spawn_first and resized then
+    if not spawned and not disabled and options.spawn_first and (resized or (has_vid ~= 0 and properties["demuxer-via-network"])) then
         spawn(mp.get_property_number("time-pos", 0))
         file_timer:resume()
     end
@@ -872,13 +910,19 @@ local function sync_changes(prop, val)
     end
 
     if prop == "vid" then
+        local had_vid = has_vid
         has_vid = 1
+        if had_vid == 0 then
+            calc_dimensions()
+            info(effective_w, effective_h)
+        end
     end
+
+    dirty = true
 
     if not spawned then return end
 
     run("set "..prop.." "..val)
-    dirty = true
 end
 
 local function file_load()
@@ -924,7 +968,7 @@ mp.observe_property("video-out-params", "native", update_property_dirty)
 mp.observe_property("video-params", "native", update_property_dirty)
 mp.observe_property("vf", "native", update_property_dirty)
 mp.observe_property("tone-mapping", "native", update_property_dirty)
-mp.observe_property("demuxer-via-network", "native", update_property)
+mp.observe_property("demuxer-via-network", "native", update_property_dirty)
 mp.observe_property("stream-open-filename", "native", update_property)
 mp.observe_property("macos-app-activation-policy", "native", update_property)
 mp.observe_property("current-vo", "native", update_property)
