@@ -522,6 +522,87 @@ local function parse_series_info(text)
 	return nil, nil, nil
 end
 
+local function format_clean_title(raw)
+	if not raw or raw == "" then return "" end
+	local name = raw:match("([^/\\]+)$") or raw
+	name = name:gsub("%?.*$", "")
+	name = name:gsub("%.%w%w%w?%w?$", "")
+
+	local norm = name:gsub("[%._]+", " ")
+
+	local s, e = norm:match("[%s%[]+[sS](%d+)[%s%.%-_]*[eE](%d+)")
+	if s and e then
+		local prefix = norm:match("^(.-)[%s%[]+[sS]" .. s)
+		if prefix then
+			local clean_show = prefix:gsub("[^%w]+", " "):match("^%s*(.-)%s*$")
+			if #clean_show >= 2 then
+				local cap = clean_show:gsub("(%a)([%w_']*)", function(first, rest) return first:upper() .. rest:lower() end)
+				return string.format("%s — S%02dE%02d", cap, tonumber(s), tonumber(e))
+			end
+		end
+	end
+
+	local s2, e2 = norm:match("[%s%[]+[sS]eason[%s%.%-_]*(%d+)[%s%.%-_]+[eE]p?i?s?o?d?e?[%s%.%-_]*(%d+)")
+	if s2 and e2 then
+		local p2 = norm:match("^(.-)[%s%[]+[sS]eason")
+		if p2 then
+			local clean_show = p2:gsub("[^%w]+", " "):match("^%s*(.-)%s*$")
+			if #clean_show >= 2 then
+				local cap = clean_show:gsub("(%a)([%w_']*)", function(first, rest) return first:upper() .. rest:lower() end)
+				return string.format("%s — S%02dE%02d", cap, tonumber(s2), tonumber(e2))
+			end
+		end
+	end
+
+	local s3, e3 = norm:match("[%s%[]+(%d+)[xX](%d+)")
+	if s3 and e3 then
+		local p3 = norm:match("^(.-)[%s%[]+" .. s3 .. "[xX]")
+		if p3 then
+			local clean_show = p3:gsub("[^%w]+", " "):match("^%s*(.-)%s*$")
+			if #clean_show >= 2 then
+				local cap = clean_show:gsub("(%a)([%w_']*)", function(first, rest) return first:upper() .. rest:lower() end)
+				return string.format("%s — S%02dE%02d", cap, tonumber(s3), tonumber(e3))
+			end
+		end
+	end
+
+	local e4 = norm:match("[%s%[]+[eE][pP]?[iI]?[sS]?[oO]?[dD]?[eE]?[%s%.%-_]*(%d+)")
+	if e4 then
+		local p4 = norm:match("^(.-)[%s%[]+[eE][pP]?")
+		if p4 then
+			local clean_show = p4:gsub("[^%w]+", " "):match("^%s*(.-)%s*$")
+			if #clean_show >= 2 then
+				local cap = clean_show:gsub("(%a)([%w_']*)", function(first, rest) return first:upper() .. rest:lower() end)
+				return string.format("%s — Episode %d", cap, tonumber(e4))
+			end
+		end
+	end
+
+	local y = norm:match("[%s%[]+(19%d%d)[%s%]%)]") or norm:match("[%s%[]+(20%d%d)[%s%]%)]")
+	if y then
+		local prefix = norm:match("^(.-)[%s%[]+" .. y)
+		if prefix then
+			local clean_title = prefix:gsub("[^%w]+", " "):match("^%s*(.-)%s*$")
+			if #clean_title >= 2 then
+				local cap = clean_title:gsub("(%a)([%w_']*)", function(first, rest) return first:upper() .. rest:lower() end)
+				return string.format("%s (%s)", cap, y)
+			end
+		end
+	end
+
+	local clean_plain = norm:gsub("[^%w]+", " "):match("^%s*(.-)%s*$")
+	if #clean_plain > 0 then
+		local cap = clean_plain:gsub("(%a)([%w_']*)", function(first, rest) return first:upper() .. rest:lower() end)
+		local words = {}
+		for w in cap:gmatch("%S+") do
+			if #words < 5 then table.insert(words, w) end
+		end
+		return table.concat(words, " ")
+	end
+
+	return name
+end
+
 local function get_recent_history_items(max_count)
 	local series_groups = {}
 	local group_order = {}
@@ -637,16 +718,17 @@ local function get_recent_history_items(max_count)
 			time_str = "Watched"
 		end
 
-		local title = cand.title or cand.key
-		if title:match("^https?://") then
-			local _, fn = get_canonical_key(title)
-			title = fn ~= "" and fn or title:sub(1, 40)
-		end
+		local raw_title = cand.title or cand.key
+		if raw_title:match("^https?://") then
+			local _, fn = get_canonical_key(raw_title)
+			raw_title = fn ~= "" and fn or raw_title:sub(1, 40)
+	end
+		local display_title = format_clean_title(raw_title)
 
 		table.insert(items, {
-			title = title,
+			title = display_title,
 			hint = time_str,
-			icon = "play_arrow",
+			icon = "history",
 			value = "script-message open-url-load-history " .. cand.key,
 		})
 	end
@@ -704,10 +786,11 @@ local function open_url_menu()
 
 	if clip_is_url then
 		local _, clean_name = get_canonical_key(clip)
-		local preview = clean_name ~= "" and clean_name or clip:sub(1, 45)
+		local preview = format_clean_title(clean_name ~= "" and clean_name or clip)
 		table.insert(menu_items, {
 			title = "▶ Play from Clipboard",
 			hint = preview,
+			icon = "play_circle",
 			value = "script-message open-url-play-clip",
 			bold = true,
 		})
@@ -716,59 +799,57 @@ local function open_url_menu()
 	table.insert(menu_items, {
 		title = "Enter Stream URL...",
 		value = "script-message open-url-prompt",
-		hint = "Type or paste link",
+		hint = "Paste or type web link",
 		icon = "edit",
 		separator = true,
 	})
 
-	-- Recently Watched Section
-	local recent_items = get_recent_history_items(10)
+	-- Recently Watched Streams (Direct 1-Click Access with Clean Formatted Titles)
+	local recent_items = get_recent_history_items(12)
 	if #recent_items > 0 then
-		table.insert(menu_items, {
-			title = "Recently Watched Streams",
-			hint = tostring(#recent_items) .. " saved",
-			icon = "history",
-			items = recent_items,
-		})
+		local show_count = math.min(5, #recent_items)
+		for i = 1, show_count do
+			table.insert(menu_items, recent_items[i])
+		end
 
-		-- Show top recent items directly in the main list for 1-click instant resume!
-		for i = 1, math.min(3, #recent_items) do
-			local item = recent_items[i]
+		if #recent_items > 5 then
 			table.insert(menu_items, {
-				title = "Resume: " .. item.title,
-				hint = item.hint,
-				icon = "play_arrow",
-				value = item.value,
+				title = "View All Recent Streams...",
+				hint = tostring(#recent_items) .. " total",
+				icon = "history",
+				items = recent_items,
 			})
 		end
 
 		table.insert(menu_items, {
-			title = "Clear Stream Watch History",
+			title = "Clear Watch History",
 			value = "script-message open-url-clear-history",
 			icon = "delete",
 			separator = true,
 		})
 	end
 
-	-- Engine Settings
+	-- Settings & Storage Section
 	local cache_mb = get_cache_size_mb()
 	table.insert(menu_items, {
 		title = "Autoload Next Episodes",
 		hint = autoload_episodes and "Enabled" or "Disabled",
+		icon = "playlist_add",
 		value = "script-message open-url-toggle-autoload",
 		active = autoload_episodes,
 	})
 
 	table.insert(menu_items, {
-		title = "Purge Stream Disk Cache",
+		title = "Clear Stream Disk Cache",
 		hint = tostring(cache_mb) .. " MB",
+		icon = "storage",
 		value = "script-message open-url-purge-cache",
 	})
 
 	local menu_data = {
 		type = "open-url-master",
-		title = "Online Stream Engine",
-		footnote = "Press Ctrl+V anytime to paste and stream directly",
+		title = "Stream Online",
+		footnote = "Press Ctrl+V to paste & play directly • Escape to close",
 		items = menu_items,
 		on_paste = "script-message open-url-load",
 		keep_open = false,

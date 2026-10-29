@@ -466,6 +466,87 @@ local function record_recent_file()
 	save_recent_files()
 end
 
+local function format_clean_title(raw)
+	if not raw or raw == "" then return "" end
+	local name = raw:match("([^/\\]+)$") or raw
+	name = name:gsub("%?.*$", "")
+	name = name:gsub("%.%w%w%w?%w?$", "")
+
+	local norm = name:gsub("[%._]+", " ")
+
+	local s, e = norm:match("[%s%[]+[sS](%d+)[%s%.%-_]*[eE](%d+)")
+	if s and e then
+		local prefix = norm:match("^(.-)[%s%[]+[sS]" .. s)
+		if prefix then
+			local clean_show = prefix:gsub("[^%w]+", " "):match("^%s*(.-)%s*$")
+			if #clean_show >= 2 then
+				local cap = clean_show:gsub("(%a)([%w_']*)", function(first, rest) return first:upper() .. rest:lower() end)
+				return string.format("%s — S%02dE%02d", cap, tonumber(s), tonumber(e))
+			end
+		end
+	end
+
+	local s2, e2 = norm:match("[%s%[]+[sS]eason[%s%.%-_]*(%d+)[%s%.%-_]+[eE]p?i?s?o?d?e?[%s%.%-_]*(%d+)")
+	if s2 and e2 then
+		local p2 = norm:match("^(.-)[%s%[]+[sS]eason")
+		if p2 then
+			local clean_show = p2:gsub("[^%w]+", " "):match("^%s*(.-)%s*$")
+			if #clean_show >= 2 then
+				local cap = clean_show:gsub("(%a)([%w_']*)", function(first, rest) return first:upper() .. rest:lower() end)
+				return string.format("%s — S%02dE%02d", cap, tonumber(s2), tonumber(e2))
+			end
+		end
+	end
+
+	local s3, e3 = norm:match("[%s%[]+(%d+)[xX](%d+)")
+	if s3 and e3 then
+		local p3 = norm:match("^(.-)[%s%[]+" .. s3 .. "[xX]")
+		if p3 then
+			local clean_show = p3:gsub("[^%w]+", " "):match("^%s*(.-)%s*$")
+			if #clean_show >= 2 then
+				local cap = clean_show:gsub("(%a)([%w_']*)", function(first, rest) return first:upper() .. rest:lower() end)
+				return string.format("%s — S%02dE%02d", cap, tonumber(s3), tonumber(e3))
+			end
+		end
+	end
+
+	local e4 = norm:match("[%s%[]+[eE][pP]?[iI]?[sS]?[oO]?[dD]?[eE]?[%s%.%-_]*(%d+)")
+	if e4 then
+		local p4 = norm:match("^(.-)[%s%[]+[eE][pP]?")
+		if p4 then
+			local clean_show = p4:gsub("[^%w]+", " "):match("^%s*(.-)%s*$")
+			if #clean_show >= 2 then
+				local cap = clean_show:gsub("(%a)([%w_']*)", function(first, rest) return first:upper() .. rest:lower() end)
+				return string.format("%s — Episode %d", cap, tonumber(e4))
+			end
+		end
+	end
+
+	local y = norm:match("[%s%[]+(19%d%d)[%s%]%)]") or norm:match("[%s%[]+(20%d%d)[%s%]%)]")
+	if y then
+		local prefix = norm:match("^(.-)[%s%[]+" .. y)
+		if prefix then
+			local clean_title = prefix:gsub("[^%w]+", " "):match("^%s*(.-)%s*$")
+			if #clean_title >= 2 then
+				local cap = clean_title:gsub("(%a)([%w_']*)", function(first, rest) return first:upper() .. rest:lower() end)
+				return string.format("%s (%s)", cap, y)
+			end
+		end
+	end
+
+	local clean_plain = norm:gsub("[^%w]+", " "):match("^%s*(.-)%s*$")
+	if #clean_plain > 0 then
+		local cap = clean_plain:gsub("(%a)([%w_']*)", function(first, rest) return first:upper() .. rest:lower() end)
+		local words = {}
+		for w in cap:gmatch("%S+") do
+			if #words < 5 then table.insert(words, w) end
+		end
+		return table.concat(words, " ")
+	end
+
+	return name
+end
+
 local function get_recent_files_items()
 	load_recent_files()
 	if #recent_files == 0 then
@@ -587,7 +668,7 @@ local function get_recent_files_items()
 		end
 
 		table.insert(items, {
-			title = cand.title,
+			title = format_clean_title(cand.title),
 			hint = time_str ~= "" and time_str or nil,
 			icon = 'play_arrow',
 			value = 'script-message play-recent-file ' .. tostring(cand.orig_idx),
