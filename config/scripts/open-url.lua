@@ -443,6 +443,25 @@ end
 -- ============================================================================
 -- Interactive uosc Menu
 -- ============================================================================
+local function is_promo_title(str)
+	if not str or str == "" then return true end
+	local s = str:lower():match("^%s*(.-)%s*$")
+	if s:match("^https?://") or s:match("^www%.") or s:match("^@") then return true end
+	if s:match("%.mkv$") or s:match("%.mp4$") or s:match("%.avi$") or s:match("%.webm$") or s:match("%.mov$") or s:match("%.ts$") then
+		return false
+	end
+	local ext = s:match("%.([a-z]+)$")
+	if ext then
+		local tlds = {
+			com=true, ir=true, net=true, org=true, info=true, biz=true, top=true,
+			xyz=true, me=true, tv=true, cc=true, co=true, io=true, ru=true, li=true,
+			site=true, vip=true, club=true, online=true, pro=true, app=true, dev=true
+		}
+		if tlds[ext] then return true end
+	end
+	return false
+end
+
 local function parse_series_info(text)
 	if not text or text == "" then return nil, nil, nil end
 	local filename = text:match("([^/\\]+)$") or text
@@ -498,12 +517,24 @@ local function get_recent_history_items(max_count)
 	local series_groups = {}
 	local group_order = {}
 
+	local healed_any = false
 	for k, v in pairs(stream_history) do
 		if v and (v.url or v.title) then
+			local _, fn = get_canonical_key(v.url or k)
 			local title = v.title or k
+			if not title or title == "" or is_promo_title(title) then
+				title = fn ~= "" and fn or title
+				v.title = title
+				healed_any = true
+			end
+
+			local fn_skey, fn_season, fn_ep = parse_series_info(fn)
 			local skey, season, ep = parse_series_info(title)
-			if not skey and v.url then
-				skey, season, ep = parse_series_info(v.url)
+			if fn_skey and not skey then
+				title = fn
+				skey, season, ep = fn_skey, fn_season, fn_ep
+				v.title = fn
+				healed_any = true
 			end
 
 			local item_data = {
@@ -567,6 +598,8 @@ local function get_recent_history_items(max_count)
 			table.insert(candidate_list, pool[1])
 		end
 	end
+
+	if healed_any then save_history() end
 
 	table.sort(candidate_list, function(a, b)
 		return (a.updated_at or 0) > (b.updated_at or 0)

@@ -343,42 +343,23 @@ local function save_recent_files()
 	end
 end
 
-local function record_recent_file()
-	local path = mp.get_property('path')
-	if not path or path == '' then return end
-	if path:match('^%a[%a%d_]+://') then return end
-
-	local pos = mp.get_property_number('time-pos') or 0
-	local dur = mp.get_property_number('duration') or 0
-	local title = mp.get_property('media-title') or mp.get_property('filename') or path:match('([^/\\]+)$') or path
-
-	local is_completed = false
-	local save_pos = pos
-	if dur > 0 and pos >= (dur * 0.92) then
-		save_pos = 0
-		is_completed = true
+local function is_promo_title(str)
+	if not str or str == "" then return true end
+	local s = str:lower():match("^%s*(.-)%s*$")
+	if s:match("^https?://") or s:match("^www%.") or s:match("^@") then return true end
+	if s:match("%.mkv$") or s:match("%.mp4$") or s:match("%.avi$") or s:match("%.webm$") or s:match("%.mov$") or s:match("%.ts$") then
+		return false
 	end
-
-	for i = #recent_files, 1, -1 do
-		if recent_files[i].path == path then
-			table.remove(recent_files, i)
-		end
+	local ext = s:match("%.([a-z]+)$")
+	if ext then
+		local tlds = {
+			com=true, ir=true, net=true, org=true, info=true, biz=true, top=true,
+			xyz=true, me=true, tv=true, cc=true, co=true, io=true, ru=true, li=true,
+			site=true, vip=true, club=true, online=true, pro=true, app=true, dev=true
+		}
+		if tlds[ext] then return true end
 	end
-
-	table.insert(recent_files, 1, {
-		path = path,
-		title = title,
-		position = save_pos,
-		duration = dur,
-		completed = is_completed,
-		updated_at = os.time(),
-	})
-
-	while #recent_files > 25 do
-		table.remove(recent_files)
-	end
-
-	save_recent_files()
+	return false
 end
 
 local function parse_series_info(text)
@@ -432,6 +413,59 @@ local function parse_series_info(text)
 	return nil, nil, nil
 end
 
+local function get_clean_file_title(path)
+	local fname = mp.get_property('filename') or path:match('([^/\\]+)$') or path
+	local mtitle = mp.get_property('media-title')
+
+	if mtitle and mtitle ~= '' and not is_promo_title(mtitle) then
+		local fname_skey = parse_series_info(fname)
+		local mtitle_skey = parse_series_info(mtitle)
+		if fname_skey and not mtitle_skey then
+			return fname
+		end
+		return mtitle
+	end
+	return fname
+end
+
+local function record_recent_file()
+	local path = mp.get_property('path')
+	if not path or path == '' then return end
+	if path:match('^%a[%a%d_]+://') then return end
+
+	local pos = mp.get_property_number('time-pos') or 0
+	local dur = mp.get_property_number('duration') or 0
+	local title = get_clean_file_title(path)
+
+	local is_completed = false
+	local save_pos = pos
+	if dur > 0 and pos >= (dur * 0.92) then
+		save_pos = 0
+		is_completed = true
+	end
+
+	for i = #recent_files, 1, -1 do
+		if recent_files[i].path == path then
+			table.remove(recent_files, i)
+		end
+	end
+
+	table.insert(recent_files, 1, {
+		path = path,
+		title = title,
+		position = save_pos,
+		duration = dur,
+		completed = is_completed,
+		updated_at = os.time(),
+	})
+
+	while #recent_files > 25 do
+		table.remove(recent_files)
+	end
+
+	save_recent_files()
+end
+
 local function get_recent_files_items()
 	load_recent_files()
 	if #recent_files == 0 then
@@ -444,11 +478,23 @@ local function get_recent_files_items()
 	local series_groups = {}
 	local group_order = {}
 
+	local healed_any = false
 	for idx, entry in ipairs(recent_files) do
-		local title = entry.title or entry.path:match('([^/\\]+)$') or entry.path
+		local filename = entry.path:match('([^/\\]+)$') or entry.path
+		local title = entry.title
+		if not title or title == '' or is_promo_title(title) then
+			title = filename
+			entry.title = filename
+			healed_any = true
+		end
+
+		local fname_skey, f_season, f_ep = parse_series_info(filename)
 		local skey, season, ep = parse_series_info(title)
-		if not skey then
-			skey, season, ep = parse_series_info(entry.path)
+		if fname_skey and not skey then
+			title = filename
+			skey, season, ep = fname_skey, f_season, f_ep
+			entry.title = filename
+			healed_any = true
 		end
 
 		local item_data = {
@@ -513,6 +559,8 @@ local function get_recent_files_items()
 	end
 
 	-- Sort candidate list by updated_at descending
+	if healed_any then save_recent_files() end
+
 	table.sort(candidate_list, function(a, b)
 		return (a.updated_at or 0) > (b.updated_at or 0)
 	end)
