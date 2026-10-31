@@ -113,14 +113,21 @@ else
         # Standalone portable engine fallback (Zero Dependencies / Offline)
         write_status "Setting up standalone portable player engine..." "Info"
         mkdir -p "$INSTALL_DIR/player"
-        STANDALONE_MPV="$INSTALL_DIR/player/mpv"
+        STANDALONE_MPV="$INSTALL_DIR/player/bin/mpv"
         
-        if [ ! -x "$STANDALONE_MPV" ]; then
-            write_status "Downloading portable MPV AppImage..." "Info"
-            APPIMAGE_URL="https://github.com/ivan-hc/MPV-appimage/releases/download/continuous/mpv-Media-Player_0.41.0-6-archimage5.0-x86_64.AppImage"
-            if curl -fsSL -A "RMN-Player" "$APPIMAGE_URL" -o "$STANDALONE_MPV"; then
-                chmod +x "$STANDALONE_MPV"
-                write_status "Standalone player engine ready ($([ -f "$STANDALONE_MPV" ] && du -h "$STANDALONE_MPV" | cut -f1))" "Success"
+        if [ ! -x "$STANDALONE_MPV" ] && [ ! -x "$INSTALL_DIR/player/mpv" ]; then
+            write_status "Downloading portable MPV package..." "Info"
+            TMP_APPIMAGE="/tmp/mpv_pkgforge_$$.AppImage"
+            APPIMAGE_URL="https://github.com/pkgforge-dev/mpv-AppImage/releases/download/v0.41.0%402026-10-24_1792872329/mpv-v0.41.0-anylinux-x86_64.AppImage"
+            if curl -fsSL -A "RMN-Player" "$APPIMAGE_URL" -o "$TMP_APPIMAGE"; then
+                chmod +x "$TMP_APPIMAGE"
+                TMP_EXTRACT="/tmp/mpv_ext_$$"
+                mkdir -p "$TMP_EXTRACT"
+                (cd "$TMP_EXTRACT" && "$TMP_APPIMAGE" --appimage-extract >/dev/null 2>&1)
+                cp -rf "$TMP_EXTRACT/squashfs-root/"* "$INSTALL_DIR/player/"
+                rm -f "$INSTALL_DIR/player/bin/05-get-yt-dlp.hook"
+                rm -rf "$TMP_EXTRACT" "$TMP_APPIMAGE"
+                write_status "Standalone player engine ready" "Success"
             else
                 write_status "Could not download standalone player. Please install mpv using your package manager." "Error"
                 exit 1
@@ -225,7 +232,9 @@ INSTALL_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/RMN-Player"
 
 # Locate mpv engine
 MPV_EXEC=""
-if [ -x "$INSTALL_DIR/player/mpv" ]; then
+if [ -x "$INSTALL_DIR/player/bin/mpv" ]; then
+    MPV_EXEC="$INSTALL_DIR/player/bin/mpv"
+elif [ -x "$INSTALL_DIR/player/mpv" ]; then
     MPV_EXEC="$INSTALL_DIR/player/mpv"
 elif command -v mpv >/dev/null 2>&1; then
     MPV_EXEC="$(command -v mpv)"
@@ -237,7 +246,13 @@ if [ -z "$MPV_EXEC" ]; then
 fi
 
 export MPV_HOME="$CONFIG_DIR"
-exec "$MPV_EXEC" --config-dir="$CONFIG_DIR" "$@"
+export LC_NUMERIC=C
+
+if [ $# -eq 0 ]; then
+    exec "$MPV_EXEC" --config-dir="$CONFIG_DIR" --idle=yes
+else
+    exec "$MPV_EXEC" --config-dir="$CONFIG_DIR" "$@"
+fi
 EOF
 chmod +x "$BIN_DIR/rmn-player"
 write_status "Launcher created: $BIN_DIR/rmn-player" "Success"
