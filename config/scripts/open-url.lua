@@ -13,8 +13,12 @@ local utils = require("mp.utils")
 local function get_config_dir()
 	local ok, dir = pcall(function() return mp.command_native({"expand-path", "~~home/"}) end)
 	if ok and dir and dir ~= "" then return dir end
+	local ok2, dir2 = pcall(function() return mp.command_native({"expand-path", "~~/"}) end)
+	if ok2 and dir2 and dir2 ~= "" then return dir2 end
 	local appdata = os.getenv("APPDATA")
 	if appdata then return appdata .. "/RMN-Player" end
+	local xdg = os.getenv("XDG_CONFIG_HOME") or (os.getenv("HOME") and (os.getenv("HOME") .. "/.config"))
+	if xdg then return xdg .. "/RMN-Player" end
 	return "."
 end
 
@@ -39,7 +43,12 @@ local function ensure_cache_dir()
 	local info = utils.file_info(cache_dir)
 	if not info or not info.is_dir then
 		pcall(function()
-			os.execute('mkdir "' .. cache_dir:gsub('/', '\\') .. '" 2>nul')
+			local is_win = (mp.get_property_native("platform") == "windows" or package.config:sub(1,1) == "\\")
+			if is_win then
+				os.execute('mkdir "' .. cache_dir:gsub('/', '\\') .. '" 2>nul')
+			else
+				os.execute('mkdir -p "' .. cache_dir .. '" 2>/dev/null')
+			end
 		end)
 	end
 end
@@ -240,8 +249,10 @@ local function probe_and_queue_next(base_url, origin, ep_offset, max_lookahead)
 	end
 
 	local user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+	local is_win = (mp.get_property_native("platform") == "windows" or package.config:sub(1,1) == "\\")
+	local curl_bin = is_win and "curl.exe" or "curl"
 	local args = {
-		"curl.exe",
+		curl_bin,
 		"-I", "-L", "-s", "-k",
 		"--connect-timeout", "5",
 		"--max-time", "8",

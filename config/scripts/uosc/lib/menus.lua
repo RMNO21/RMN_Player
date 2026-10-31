@@ -789,13 +789,15 @@ function open_open_file_menu()
 		local serialized = serialize_path(state.path)
 		if serialized then directory = serialized.dirname end
 	end
+	local is_windows = mp.get_property_native('platform') == 'windows' or package.config:sub(1,1) == '\\'
+
 	if not directory or directory == '' then
 		local home = os.getenv('USERPROFILE') or os.getenv('HOME') or '.'
-		directory = options.default_directory or (home .. '\\Downloads')
+		directory = options.default_directory or (is_windows and (home .. '\\Downloads') or (home .. '/Downloads'))
 	end
-	directory = directory:gsub('/', '\\')
-
-	local is_windows = mp.get_property_native('platform') == 'windows' or package.config:sub(1,1) == '\\'
+	if is_windows then
+		directory = directory:gsub('/', '\\')
+	end
 
 	if is_windows then
 		local ps_script = string.format([=[
@@ -835,6 +837,50 @@ if ($res -eq [System.Windows.Forms.DialogResult]::OK) {
 			end
 		end)
 		return
+	end
+
+	local is_linux = mp.get_property_native('platform') == 'linux'
+	if is_linux then
+		local has_zenity = utils.file_info('/usr/bin/zenity') ~= nil or utils.subprocess({args = {'which', 'zenity'}}).status == 0
+		local has_kdialog = utils.file_info('/usr/bin/kdialog') ~= nil or utils.subprocess({args = {'which', 'kdialog'}}).status == 0
+		if has_zenity or has_kdialog then
+			local args
+			if has_zenity then
+				args = {
+					'zenity', '--file-selection',
+					'--title=Open Media File',
+					'--file-filter=Media Files | *.mkv *.mp4 *.avi *.webm *.mov *.flv *.wmv *.ts *.m4v *.m2ts *.mp3 *.flac *.m4a *.ogg *.opus *.wav *.aac',
+					'--file-filter=Video Files | *.mkv *.mp4 *.avi *.webm *.mov *.flv *.wmv *.ts *.m4v *.m2ts',
+					'--file-filter=Audio Files | *.mp3 *.flac *.m4a *.ogg *.opus *.wav *.aac',
+					'--file-filter=All Files | *',
+				}
+				if directory and directory ~= '' and utils.file_info(directory) then
+					table.insert(args, '--filename=' .. directory .. '/')
+				end
+			else
+				args = {
+					'kdialog', '--getopenfilename', directory or '.',
+					'*.mkv *.mp4 *.avi *.webm *.mov *.flv *.wmv *.ts *.m4v *.m2ts *.mp3 *.flac *.m4a *.ogg *.opus *.wav *.aac|Media Files\n*|All Files',
+					'--title', 'Open Media File',
+				}
+			end
+
+			mp.command_native_async({
+				name = 'subprocess',
+				playback_only = false,
+				capture_stdout = true,
+				args = args,
+			}, function(success, result, error)
+				if success and result and result.status == 0 and result.stdout and result.stdout ~= '' then
+					local selected = result.stdout:gsub('^%s+', ''):gsub('%s+$', '')
+					if #selected > 0 then
+						local command = has_any_extension(selected, config.types.playlist) and 'loadlist' or 'loadfile'
+						mp.commandv(command, selected, 'replace')
+					end
+				end
+			end)
+			return
+		end
 	end
 
 	---@type Menu | nil

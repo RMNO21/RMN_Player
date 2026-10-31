@@ -21,8 +21,12 @@ local save_timer = nil
 local function get_config_dir()
     local ok, dir = pcall(function() return mp.command_native({"expand-path", "~~home/"}) end)
     if ok and dir and dir ~= "" then return dir end
+    local ok2, dir2 = pcall(function() return mp.command_native({"expand-path", "~~/"}) end)
+    if ok2 and dir2 and dir2 ~= "" then return dir2 end
     local appdata = os.getenv("APPDATA")
     if appdata then return appdata .. "/mpv" end
+    local xdg = os.getenv("XDG_CONFIG_HOME") or (os.getenv("HOME") and (os.getenv("HOME") .. "/.config"))
+    if xdg then return xdg .. "/RMN-Player" end
     return "."
 end
 

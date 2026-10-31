@@ -309,6 +309,8 @@ local function get_rmn_config_dir()
 	if ok2 and dir2 and dir2 ~= '' then return dir2 end
 	local appdata = os.getenv('APPDATA')
 	if appdata then return appdata .. '/RMN-Player' end
+	local xdg = os.getenv('XDG_CONFIG_HOME') or (os.getenv('HOME') and (os.getenv('HOME') .. '/.config'))
+	if xdg then return xdg .. '/RMN-Player' end
 	return '.'
 end
 

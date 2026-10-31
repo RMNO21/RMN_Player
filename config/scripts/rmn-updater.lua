@@ -16,18 +16,31 @@ local function check_and_update()
     mp.osd_message("Checking for updates...", 3)
     msg.info("Checking for RMN-Player updates...")
 
-    local appdata = os.getenv("APPDATA") or ""
-    local script_path = appdata .. "\\RMN-Player\\update-rmn.ps1"
+    local is_win = (mp.get_property_native("platform") == "windows" or package.config:sub(1,1) == "\\")
+    local cmd_args
+
+    if is_win then
+        local appdata = os.getenv("APPDATA") or ""
+        local script_path = appdata .. "\\RMN-Player\\update-rmn.ps1"
+        cmd_args = {
+            "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass",
+            "-File", script_path
+        }
+    else
+        local config_dir = mp.command_native({"expand-path", "~~home/"})
+        if not config_dir or config_dir == "" then
+            config_dir = (os.getenv("XDG_CONFIG_HOME") or (os.getenv("HOME") .. "/.config")) .. "/RMN-Player"
+        end
+        local script_path = config_dir .. "/update-rmn.sh"
+        cmd_args = { "bash", script_path }
+    end
 
     mp.command_native_async({
         name = "subprocess",
         playback_only = false,
         capture_stdout = true,
         capture_stderr = true,
-        args = {
-            "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass",
-            "-File", script_path
-        }
+        args = cmd_args
     }, function(success, res)
         is_running = false
 

@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=RMN-Player
+GenericName=Media Player
+Comment=High-performance custom media player with OLED-tuned rendering
+Exec=rmn-player %U
+Icon=rmn-player
+Terminal=false
+StartupNotify=true
+Categories=AudioVideo;Player;Video;Audio;
+MimeType=video/x-matroska;video/mp4;video/x-msvideo;video/quicktime;video/x-ms-wmv;video/x-flv;video/webm;video/x-m4v;video/mpeg;video/mp2t;video/x-ogm+ogg;video/3gpp;video/3gpp2;video/divx;video/vnd.rn-realvideo;audio/mpeg;audio/x-flac;audio/x-wav;audio/aac;audio/ogg;audio/opus;audio/x-ms-wma;audio/mp4;audio/m4a;application/ogg;application/x-ogg;application/x-matroska;application/vnd.apple.mpegurl;audio/x-mpegurl;
+Keywords=player;media;video;audio;oled;mpv;rmn;

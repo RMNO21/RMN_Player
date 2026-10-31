@@ -15,7 +15,7 @@ A high-performance custom media player for Windows with OLED-tuned rendering, in
   <a href="https://github.com/FurqanHun/awesome-mpv#user-configuration">
     <img src="https://img.shields.io/badge/Featured%20in-Awesome--mpv-brightgreen?style=for-the-badge&logo=awesome" alt="Featured in Awesome-mpv" />
   </a>
-  <img src="https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011-0078D6?style=for-the-badge&logo=windows" alt="Windows Platform" />
+  <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-0078D6?style=for-the-badge&logo=linux" alt="Windows & Linux Platform" />
   <a href="https://github.com/RMNO21/RMN_Player/stargazers">
     <img src="https://img.shields.io/github/stars/RMNO21/RMN_Player?style=for-the-badge&color=gold" alt="Stars" />
   </a>
@@ -49,13 +49,21 @@ A high-performance custom media player for Windows with OLED-tuned rendering, in
 
 ### Installation
 
+#### Windows
 1. Download or clone this repository
-2. Run `Install-RMN.bat`
-3. Done!
+2. Run `Install-RMN.bat` or `.\rmn-installer.ps1`
 
-```powershell
-# Or run via PowerShell:
-.\rmn-installer.ps1
+#### Linux
+Run directly via terminal:
+```bash
+curl -fsSL https://raw.githubusercontent.com/RMNO21/RMN_Player/main/install.sh | bash
+```
+
+Or from the cloned repository:
+```bash
+./install.sh
+# or
+./Install-RMN.sh
 ```
 
 ---
@@ -90,15 +98,17 @@ All letter shortcuts are mapped for both **English (EN)** and **Persian (FA)** k
 
 ## Configuration
 
-Configuration files are installed at `%APPDATA%\RMN-Player\`:
+Configuration files are installed at:
+- **Linux:** `~/.config/RMN-Player/`
+- **Windows:** `%APPDATA%\RMN-Player\`
 
 ```
-%APPDATA%\RMN-Player\
+<CONFIG_DIR>/
 ├── mpv.conf               # Video & audio rendering pipeline
 ├── input.conf             # Bilingual keybindings & mouse actions
 ├── episode-tracker.json   # Local episode tracking database
 ├── version.json           # Installed version metadata & changelog
-├── update-rmn.ps1         # Automated update script
+├── update-rmn.sh / .ps1   # Automated update script
 ├── script-opts/
 │   ├── uosc.conf          # Modern UI layout & tokens
 │   ├── thumbfast.conf     # Thumbnail preview settings
