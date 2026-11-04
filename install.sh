@@ -92,17 +92,17 @@ else
     INSTALLED_VIA_PKG=false
     if sudo -n true 2>/dev/null; then
         if command -v apt-get >/dev/null 2>&1; then
-            write_status "Installing mpv via apt..." "Info"
-            sudo apt-get update -qq && sudo apt-get install -y -qq mpv >/dev/null 2>&1 && INSTALLED_VIA_PKG=true
+            write_status "Installing mpv and clipboard utilities via apt..." "Info"
+            sudo apt-get update -qq && sudo apt-get install -y -qq mpv xclip >/dev/null 2>&1 && INSTALLED_VIA_PKG=true
         elif command -v pacman >/dev/null 2>&1; then
-            write_status "Installing mpv via pacman..." "Info"
-            sudo pacman -Sy --noconfirm mpv >/dev/null 2>&1 && INSTALLED_VIA_PKG=true
+            write_status "Installing mpv and clipboard utilities via pacman..." "Info"
+            sudo pacman -Sy --noconfirm mpv xclip >/dev/null 2>&1 && INSTALLED_VIA_PKG=true
         elif command -v dnf >/dev/null 2>&1; then
-            write_status "Installing mpv via dnf..." "Info"
-            sudo dnf install -y -q mpv >/dev/null 2>&1 && INSTALLED_VIA_PKG=true
+            write_status "Installing mpv and clipboard utilities via dnf..." "Info"
+            sudo dnf install -y -q mpv xclip >/dev/null 2>&1 && INSTALLED_VIA_PKG=true
         elif command -v zypper >/dev/null 2>&1; then
-            write_status "Installing mpv via zypper..." "Info"
-            sudo zypper --non-interactive in mpv >/dev/null 2>&1 && INSTALLED_VIA_PKG=true
+            write_status "Installing mpv and clipboard utilities via zypper..." "Info"
+            sudo zypper --non-interactive in mpv xclip >/dev/null 2>&1 && INSTALLED_VIA_PKG=true
         fi
     fi
 
@@ -133,6 +133,19 @@ else
                 exit 1
             fi
         fi
+    fi
+fi
+
+# ── 1.1 Check or install yt-dlp (Online streaming backend) ────────────────────
+if ! command -v yt-dlp >/dev/null 2>&1 && [ ! -x "$BIN_DIR/yt-dlp" ] && [ ! -x "$INSTALL_DIR/player/bin/yt-dlp" ]; then
+    write_status "Checking yt-dlp (online stream backend)..." "Info"
+    if sudo -n true 2>/dev/null && command -v apt-get >/dev/null 2>&1; then
+        sudo apt-get install -y -qq yt-dlp >/dev/null 2>&1 || true
+    fi
+    if ! command -v yt-dlp >/dev/null 2>&1; then
+        write_status "Downloading standalone yt-dlp binary..." "Info"
+        mkdir -p "$BIN_DIR"
+        curl -fsSL -A "RMN-Player" "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp" -o "$BIN_DIR/yt-dlp" 2>/dev/null && chmod +x "$BIN_DIR/yt-dlp" || true
     fi
 fi
 

@@ -1,11 +1,11 @@
 {
   "name": "RMN-Player",
-  "version": "1.4.0",
-  "version_code": 140,
+  "version": "1.5.0",
+  "version_code": 150,
   "release_date": "2026-11-04",
   "channel": "stable",
   "repository": "RMNO21/RMN_Player",
-  "changelog": "Fix: Cross-platform ambient background fill & 200+ volume boost for Linux, native monitor aspect detection, and multimedia keybindings.",
+  "changelog": "Fix: Overhauled online streaming engine — resolved frozen 'Connecting to stream' bug, fixed Lua scope runtime exception, removed synthetic Origin/Referer CORS injection breaking CDNs, optimized zero-latency RAM streaming cache, added live buffering & connection feedback with robust error reporting, and enhanced clipboard auto-detection.",
   "html_url": "https://github.com/RMNO21/RMN_Player",
   "download_url": "https://github.com/RMNO21/RMN_Player/archive/refs/heads/main.zip"
 }

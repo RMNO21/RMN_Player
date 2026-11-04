@@ -38,6 +38,13 @@ local pending_resume_pos = nil
 local autoload_episodes = true
 local last_saved_pos = 0
 
+-- Live stream connection & buffering state
+local is_loading_stream = false
+local loading_stream_url = nil
+local loading_display_title = nil
+local loading_start_time = 0
+local buffer_feedback_timer = nil
+
 -- Ensure temp cache directory exists
 local function ensure_cache_dir()
 	local info = utils.file_info(cache_dir)
@@ -186,282 +193,7 @@ local function get_canonical_key(url)
 end
 
 -- ============================================================================
--- Episode Detection & Probing Engine
--- ============================================================================
-local EP_PATTERNS = {
-	-- S04E03 or s04.e03 or S4_EP03
-	{pattern = "([Ss]%d+[%._%-%s]*[Ee][Pp]?)(%d+)", kind = "season_ep"},
-	-- .E03. or _ep03_ or -E3-
-	{pattern = "([%._%-%s][Ee][Pp]?)(%d+)([%._%-%s])", kind = "ep_only"},
-	-- Episode_03 or episode.3
-	{pattern = "([%._%-%s][Ee]pisode[%._%-%s]*)(%d+)", kind = "episode_word"},
-	-- Part_03 or part.3
-	{pattern = "([%._%-%s][Pp]art[%._%-%s]*)(%d+)", kind = "part_word"},
-}
-
-local function get_next_episode_url(url, step)
-	step = step or 1
-	for _, p in ipairs(EP_PATTERNS) do
-		local pre, num_str, post = url:match(p.pattern)
-		if pre and num_str then
-			local num = tonumber(num_str)
-			if num then
-				local next_num = num + step
-				local fmt = string.format("%%0%dd", #num_str)
-				local next_num_str = string.format(fmt, next_num)
-
-				local s_idx, e_idx = url:find(p.pattern)
-				if s_idx and e_idx then
-					local matched_sub = url:sub(s_idx, e_idx)
-					local replaced_sub
-					if post then
-						replaced_sub = pre .. next_num_str .. post
-					else
-						replaced_sub = pre .. next_num_str
-					end
-					return url:sub(1, s_idx - 1) .. replaced_sub .. url:sub(e_idx + 1), next_num_str
-				end
-			end
-		end
-	end
-	return nil, nil
-end
-
--- Asynchronous probing of next episode via curl.exe HEAD request
-local function probe_and_queue_next(base_url, origin, ep_offset, max_lookahead)
-	if not autoload_episodes then return end
-	ep_offset = ep_offset or 1
-	max_lookahead = max_lookahead or 3
-	if ep_offset > max_lookahead then return end
-
-	local candidate_url, next_ep_label = get_next_episode_url(base_url, ep_offset)
-	if not candidate_url then return end
-
-	-- Check if candidate is already in playlist
-	local count = mp.get_property_number("playlist-count", 0)
-	for i = 0, count - 1 do
-		local pl_path = mp.get_property("playlist/" .. i .. "/filename")
-		if pl_path and pl_path == candidate_url then
-			-- Already queued, probe the one after
-			probe_and_queue_next(base_url, origin, ep_offset + 1, max_lookahead)
-			return
-		end
-	end
-
-	local user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-	local is_win = (mp.get_property_native("platform") == "windows" or package.config:sub(1,1) == "\\")
-	local curl_bin = is_win and "curl.exe" or "curl"
-	local args = {
-		curl_bin,
-		"-I", "-L", "-s", "-k",
-		"--connect-timeout", "5",
-		"--max-time", "8",
-		"-A", user_agent,
-	}
-	if origin and origin ~= "" then
-		table.insert(args, "-e")
-		table.insert(args, origin)
-	end
-	table.insert(args, candidate_url)
-
-	mp.command_native_async({
-		name = "subprocess",
-		playback_only = false,
-		capture_stdout = true,
-		capture_stderr = true,
-		args = args,
-	}, function(success, res, err)
-		if success and res and res.status == 0 and res.stdout then
-			local is_valid = false
-			for status_line in res.stdout:gmatch("HTTP/%d%.?%d?%s+(%d%d%d)") do
-				local code = tonumber(status_line)
-				if code and (code == 200 or code == 206 or (code >= 300 and code < 400)) then
-					is_valid = true
-					break
-				end
-			end
-
-			if is_valid then
-				msg.info("Autoloaded next online episode: " .. candidate_url)
-				mp.commandv("loadfile", candidate_url, "append")
-				mp.osd_message("Added next episode: E" .. tostring(next_ep_label), 3)
-
-				-- Recursively probe the following episode!
-				mp.add_timeout(1.0, function()
-					probe_and_queue_next(base_url, origin, ep_offset + 1, max_lookahead)
-				end)
-				return
-			end
-		end
-		msg.debug("Probe finished for candidate offset: " .. ep_offset)
-	end)
-end
-
--- ============================================================================
--- Stream Playback Engine (Header Injection & URL Loading)
--- ============================================================================
-local function play_stream_url(url, target_pos)
-	if not url or url == "" then return end
-	url = url:gsub("^%s+", ""):gsub("%s+$", ""):gsub('^["\']', ''):gsub('["\']$', '')
-
-	if not is_web_url(url) then
-		mp.osd_message("Invalid URL protocol. Must start with http:// or https://", 3)
-		return
-	end
-
-	-- Extract Origin & Referer
-	local origin = get_origin(url)
-	local user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-
-	-- Inject headers to bypass 403 Forbidden / anti-hotlink protections
-	mp.set_property("user-agent", user_agent)
-	if origin then
-		mp.set_property("http-header-fields", "Referer: " .. origin .. ",Origin: " .. origin:gsub("/$", ""))
-	end
-
-	local canonical_key, filename = get_canonical_key(url)
-	current_stream_key = canonical_key
-
-	-- Check for saved watch-later position
-	local entry = stream_history[canonical_key]
-	local resume_pos = target_pos
-	if not resume_pos and entry and entry.position and entry.position > 15 then
-		resume_pos = entry.position
-	end
-
-	if resume_pos and resume_pos > 15 then
-		pending_resume_pos = resume_pos
-		-- Pre-set start position so demuxer directly requests byte range without downloading prior parts!
-		mp.set_property("start", tostring(math.floor(resume_pos)))
-	else
-		pending_resume_pos = nil
-		mp.set_property("start", "none")
-	end
-
-	local display_title = (entry and entry.title and entry.title ~= "") and entry.title or (filename ~= "" and filename or url:sub(1, 40))
-	mp.osd_message("Connecting to stream: " .. display_title, 4)
-	msg.info("Playing stream: " .. url .. " (Canonical: " .. canonical_key .. ", Start: " .. tostring(pending_resume_pos or 0) .. "s)")
-
-	-- If playback is active, save position and immediately stop old playback.
-	-- This kills old background network connections, flushes video/audio decoders and cache,
-	-- putting the player in clean idle state so the new stream loads at maximum speed!
-	local cur_path = mp.get_property("path")
-	if cur_path and cur_path ~= "" then
-		record_current_position()
-		mp.command("stop")
-	end
-
-	-- Load file cleanly into idle player
-	mp.commandv("loadfile", url, "replace")
-
-	-- Background probe next episodes
-	mp.add_timeout(2.5, function()
-		probe_and_queue_next(url, origin, 1, 3)
-	end)
-end
-
--- ============================================================================
--- Watch-Later Resumption & Position Tracker
--- ============================================================================
-mp.register_event("file-loaded", function()
-	local path = mp.get_property("path") or ""
-	if not is_web_url(path) then
-		current_stream_key = nil
-		pending_resume_pos = nil
-		return
-	end
-
-	local origin = get_origin(path)
-	local canonical_key = get_canonical_key(path)
-	current_stream_key = canonical_key
-
-	-- Ensure headers are injected on any stream file
-	local user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-	mp.set_property("user-agent", user_agent)
-	if origin then
-		mp.set_property("http-header-fields", "Referer: " .. origin .. ",Origin: " .. origin:gsub("/$", ""))
-	end
-
-	-- Check for saved watch-later position
-	if pending_resume_pos and pending_resume_pos > 15 then
-		local pos = pending_resume_pos
-		pending_resume_pos = nil
-		local mins = math.floor(pos / 60)
-		local secs = math.floor(pos % 60)
-		mp.osd_message(string.format("▶ Resumed at %02d:%02d (Saved Stream Position)", mins, secs), 3.5)
-		mp.set_property("start", "none")
-	else
-		local entry = stream_history[canonical_key]
-		if entry and entry.position and entry.position > 15 then
-			local cur_time = mp.get_property_number("time-pos") or 0
-			if cur_time < 10 then
-				local pos = entry.position
-				mp.add_timeout(0.1, function()
-					mp.commandv("seek", pos, "absolute", "exact")
-					local mins = math.floor(pos / 60)
-					local secs = math.floor(pos % 60)
-					mp.osd_message(string.format("▶ Resumed at %02d:%02d (Saved Stream Position)", mins, secs), 3.5)
-				end)
-			end
-		end
-	end
-
-	-- Trigger background probing for next episodes on any online stream
-	mp.add_timeout(2.0, function()
-		probe_and_queue_next(path, origin, 1, 3)
-	end)
-end)
-
--- Periodic position record
-local function record_current_position()
-	if not current_stream_key then return end
-	local pos = mp.get_property_number("time-pos")
-	local dur = mp.get_property_number("duration")
-	if not pos or pos < 5 then return end
-
-	local title = mp.get_property("media-title") or mp.get_property("filename") or current_stream_key
-	local path = mp.get_property("path") or ""
-
-	local save_pos = pos
-	local is_completed = false
-	if dur and dur > 0 and pos >= (dur * 0.92) then
-		save_pos = 0
-		is_completed = true
-	end
-
-	stream_history[current_stream_key] = {
-		position = save_pos,
-		duration = dur or 0,
-		title = title,
-		url = path,
-		completed = is_completed,
-		updated_at = os.time(),
-	}
-	save_history()
-end
-
-local save_timer = mp.add_periodic_timer(5, record_current_position)
-
-mp.register_event("pause", record_current_position)
-mp.register_event("end-file", record_current_position)
-mp.register_event("shutdown", function()
-	record_current_position()
-	prune_cache()
-end)
--- ============================================================================
--- Clipboard Helper
--- ============================================================================
-local function get_clipboard_text()
-	local text = mp.get_property("clipboard/text")
-	if text and text ~= "" then
-		text = text:gsub("^%s+", ""):gsub("%s+$", "")
-		return text
-	end
-	return nil
-end
-
--- ============================================================================
--- Interactive uosc Menu
+-- Title Sanitization & Series Parser Engine
 -- ============================================================================
 local function is_promo_title(str)
 	if not str or str == "" then return true end
@@ -614,6 +346,372 @@ local function format_clean_title(raw)
 	return name
 end
 
+-- ============================================================================
+-- Episode Detection & Probing Engine
+-- ============================================================================
+local EP_PATTERNS = {
+	-- S04E03 or s04.e03 or S4_EP03
+	{pattern = "([Ss]%d+[%._%-%s]*[Ee][Pp]?)(%d+)", kind = "season_ep"},
+	-- .E03. or _ep03_ or -E3-
+	{pattern = "([%._%-%s][Ee][Pp]?)(%d+)([%._%-%s])", kind = "ep_only"},
+	-- Episode_03 or episode.3
+	{pattern = "([%._%-%s][Ee]pisode[%._%-%s]*)(%d+)", kind = "episode_word"},
+	-- Part_03 or part.3
+	{pattern = "([%._%-%s][Pp]art[%._%-%s]*)(%d+)", kind = "part_word"},
+}
+
+local function get_next_episode_url(url, step)
+	step = step or 1
+	for _, p in ipairs(EP_PATTERNS) do
+		local pre, num_str, post = url:match(p.pattern)
+		if pre and num_str then
+			local num = tonumber(num_str)
+			if num then
+				local next_num = num + step
+				local fmt = string.format("%%0%dd", #num_str)
+				local next_num_str = string.format(fmt, next_num)
+
+				local s_idx, e_idx = url:find(p.pattern)
+				if s_idx and e_idx then
+					local matched_sub = url:sub(s_idx, e_idx)
+					local replaced_sub
+					if post then
+						replaced_sub = pre .. next_num_str .. post
+					else
+						replaced_sub = pre .. next_num_str
+					end
+					return url:sub(1, s_idx - 1) .. replaced_sub .. url:sub(e_idx + 1), next_num_str
+				end
+			end
+		end
+	end
+	return nil, nil
+end
+
+-- Asynchronous probing of next episode via curl.exe HEAD request
+local function probe_and_queue_next(base_url, origin, ep_offset, max_lookahead)
+	if not autoload_episodes then return end
+	ep_offset = ep_offset or 1
+	max_lookahead = max_lookahead or 3
+	if ep_offset > max_lookahead then return end
+
+	local candidate_url, next_ep_label = get_next_episode_url(base_url, ep_offset)
+	if not candidate_url then return end
+
+	-- Check if candidate is already in playlist
+	local count = mp.get_property_number("playlist-count", 0)
+	for i = 0, count - 1 do
+		local pl_path = mp.get_property("playlist/" .. i .. "/filename")
+		if pl_path and pl_path == candidate_url then
+			-- Already queued, probe the one after
+			probe_and_queue_next(base_url, origin, ep_offset + 1, max_lookahead)
+			return
+		end
+	end
+
+	local user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+	local is_win = (mp.get_property_native("platform") == "windows" or package.config:sub(1,1) == "\\")
+	local curl_bin = is_win and "curl.exe" or "curl"
+	local args = {
+		curl_bin,
+		"-I", "-L", "-s", "-k",
+		"--connect-timeout", "5",
+		"--max-time", "8",
+		"-A", user_agent,
+		candidate_url,
+	}
+
+	mp.command_native_async({
+		name = "subprocess",
+		playback_only = false,
+		capture_stdout = true,
+		capture_stderr = true,
+		args = args,
+	}, function(success, res, err)
+		if success and res and res.status == 0 and res.stdout then
+			local is_valid = false
+			for status_line in res.stdout:gmatch("HTTP/%d%.?%d?%s+(%d%d%d)") do
+				local code = tonumber(status_line)
+				if code and (code == 200 or code == 206 or (code >= 300 and code < 400)) then
+					is_valid = true
+					break
+				end
+			end
+
+			if is_valid then
+				msg.info("Autoloaded next online episode: " .. candidate_url)
+				mp.commandv("loadfile", candidate_url, "append")
+				mp.osd_message("Added next episode: E" .. tostring(next_ep_label), 3)
+
+				-- Recursively probe the following episode!
+				mp.add_timeout(1.0, function()
+					probe_and_queue_next(base_url, origin, ep_offset + 1, max_lookahead)
+				end)
+				return
+			end
+		end
+		msg.debug("Probe finished for candidate offset: " .. ep_offset)
+	end)
+end
+
+-- ============================================================================
+-- Stream Position Tracker & Watch-Later Persistence
+-- ============================================================================
+local function record_current_position()
+	if not current_stream_key then return end
+	local pos = mp.get_property_number("time-pos")
+	local dur = mp.get_property_number("duration")
+	if not pos or pos < 5 then return end
+
+	local title = mp.get_property("media-title") or mp.get_property("filename") or current_stream_key
+	local path = mp.get_property("path") or ""
+
+	local save_pos = pos
+	local is_completed = false
+	if dur and dur > 0 and pos >= (dur * 0.92) then
+		save_pos = 0
+		is_completed = true
+	end
+
+	stream_history[current_stream_key] = {
+		position = save_pos,
+		duration = dur or 0,
+		title = title,
+		url = path,
+		completed = is_completed,
+		updated_at = os.time(),
+	}
+	save_history()
+end
+
+local save_timer = mp.add_periodic_timer(5, record_current_position)
+
+-- ============================================================================
+-- Live Stream Connection & Buffering Monitor
+-- ============================================================================
+local function stop_loading_monitor()
+	if buffer_feedback_timer then
+		buffer_feedback_timer:kill()
+		buffer_feedback_timer = nil
+	end
+	is_loading_stream = false
+	loading_stream_url = nil
+	loading_display_title = nil
+end
+
+local function start_loading_monitor(display_title, url)
+	if buffer_feedback_timer then
+		buffer_feedback_timer:kill()
+		buffer_feedback_timer = nil
+	end
+
+	is_loading_stream = true
+	loading_stream_url = url
+	loading_display_title = display_title
+	loading_start_time = mp.get_time()
+
+	-- Instant initial OSD indicator
+	mp.osd_message("⚡ Connecting to stream...\n" .. display_title, 2.0)
+
+	buffer_feedback_timer = mp.add_periodic_timer(0.35, function()
+		if not is_loading_stream then
+			stop_loading_monitor()
+			return
+		end
+
+		local buf_pct = mp.get_property_number("buffering-progress", 0)
+		local elapsed = mp.get_time() - loading_start_time
+
+		if buf_pct > 0 and buf_pct < 100 then
+			mp.osd_message(string.format("⚡ Buffering stream: %d%%\n%s", buf_pct, loading_display_title or ""), 0.9)
+		else
+			local dots = string.rep(".", (math.floor(elapsed * 2.5) % 4) + 1)
+			mp.osd_message(string.format("⚡ Connecting to stream%s (%.1fs)\n%s", dots, elapsed, loading_display_title or ""), 0.9)
+		end
+	end)
+end
+
+-- ============================================================================
+-- Stream Playback Engine (Zero-Bloat Direct URL Loading)
+-- ============================================================================
+local function play_stream_url(url, target_pos)
+	if not url or url == "" then return end
+	url = url:gsub("^%s+", ""):gsub("%s+$", ""):gsub('^["\']', ''):gsub('["\']$', '')
+
+	if not is_web_url(url) then
+		mp.osd_message("Invalid URL protocol. Must start with http:// or https://", 3)
+		return
+	end
+
+	-- Dismiss any active uosc menu/palette immediately
+	mp.commandv("script-message-to", "uosc", "close-menu")
+
+	-- Set modern clean browser User-Agent
+	local user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+	mp.set_property("user-agent", user_agent)
+	-- Clear custom headers to avoid strict CORS/403 blocks from CDNs
+	mp.set_property("http-header-fields", "")
+
+	local canonical_key, filename = get_canonical_key(url)
+	current_stream_key = canonical_key
+
+	-- Check for saved watch-later position
+	local entry = stream_history[canonical_key]
+	local resume_pos = target_pos
+	if not resume_pos and entry and entry.position and entry.position > 15 then
+		resume_pos = entry.position
+	end
+
+	if resume_pos and resume_pos > 15 then
+		pending_resume_pos = resume_pos
+		-- Pre-set start position so demuxer directly requests byte range without downloading prior parts!
+		mp.set_property("start", tostring(math.floor(resume_pos)))
+	else
+		pending_resume_pos = nil
+		mp.set_property("start", "none")
+	end
+
+	local raw_name = (filename ~= "" and filename or url:sub(1, 50))
+	local display_title = (entry and entry.title and entry.title ~= "") and entry.title or format_clean_title(raw_name)
+	if not display_title or display_title == "" then display_title = raw_name end
+
+	msg.info("Playing stream: " .. url .. " (Canonical: " .. canonical_key .. ", Start: " .. tostring(pending_resume_pos or 0) .. "s)")
+
+	-- If playback is active, save position and immediately stop old playback.
+	-- This kills old background network connections, flushes video/audio decoders and cache,
+	-- putting the player in clean idle state so the new stream loads at maximum speed!
+	local cur_path = mp.get_property("path")
+	if cur_path and cur_path ~= "" then
+		if current_stream_key then
+			record_current_position()
+		end
+		mp.command("stop")
+	end
+
+	-- Start live connection and buffering monitor
+	start_loading_monitor(display_title, url)
+
+	-- Load file cleanly into idle player
+	mp.commandv("loadfile", url, "replace")
+end
+
+-- ============================================================================
+-- Watch-Later Resumption, Progress Monitor & Events
+-- ============================================================================
+mp.register_event("playback-restart", function()
+	local path = mp.get_property("path") or ""
+	if is_loading_stream or is_web_url(path) then
+		local title = loading_display_title or mp.get_property("media-title") or mp.get_property("filename") or "Online Stream"
+		stop_loading_monitor()
+		mp.osd_message("▶ Playing: " .. title, 2.5)
+	end
+end)
+
+mp.register_event("file-loaded", function()
+	local path = mp.get_property("path") or ""
+	if not is_web_url(path) then
+		current_stream_key = nil
+		pending_resume_pos = nil
+		stop_loading_monitor()
+		return
+	end
+
+	local origin = get_origin(path)
+	local canonical_key = get_canonical_key(path)
+	current_stream_key = canonical_key
+
+	-- Check for saved watch-later position
+	if pending_resume_pos and pending_resume_pos > 15 then
+		local pos = pending_resume_pos
+		pending_resume_pos = nil
+		local mins = math.floor(pos / 60)
+		local secs = math.floor(pos % 60)
+		mp.osd_message(string.format("▶ Resumed at %02d:%02d (Saved Stream Position)", mins, secs), 3.5)
+		mp.set_property("start", "none")
+	else
+		local entry = stream_history[canonical_key]
+		if entry and entry.position and entry.position > 15 then
+			local cur_time = mp.get_property_number("time-pos") or 0
+			if cur_time < 10 then
+				local pos = entry.position
+				mp.add_timeout(0.1, function()
+					mp.commandv("seek", pos, "absolute", "exact")
+					local mins = math.floor(pos / 60)
+					local secs = math.floor(pos % 60)
+					mp.osd_message(string.format("▶ Resumed at %02d:%02d (Saved Stream Position)", mins, secs), 3.5)
+				end)
+			end
+		end
+	end
+
+	-- Trigger background probing for next episodes ONLY AFTER current stream is successfully loaded!
+	mp.add_timeout(2.0, function()
+		probe_and_queue_next(path, origin, 1, 3)
+	end)
+end)
+
+mp.register_event("end-file", function(event)
+	record_current_position()
+
+	if event.reason == "error" then
+		stop_loading_monitor()
+		local err = event.file_error or event.error or "Connection error or stream unavailable"
+		msg.error("Stream loading failed: " .. tostring(err))
+		mp.osd_message("❌ Stream connection failed: " .. tostring(err), 4.5)
+		current_stream_key = nil
+		pending_resume_pos = nil
+	elseif event.reason == "eof" or event.reason == "stop" then
+		stop_loading_monitor()
+	end
+end)
+
+mp.register_event("pause", record_current_position)
+mp.register_event("shutdown", function()
+	record_current_position()
+	prune_cache()
+end)
+-- ============================================================================
+-- Clipboard Helper
+-- ============================================================================
+local function get_clipboard_text()
+	local text = mp.get_property("clipboard/text")
+	if text and text ~= "" then
+		text = text:gsub("^%s+", ""):gsub("%s+$", "")
+		return text
+	end
+
+	-- Fallback for Linux environments where mpv clipboard property might not have synced yet
+	local is_win = (mp.get_property_native("platform") == "windows" or package.config:sub(1,1) == "\\")
+	if not is_win then
+		local res = mp.command_native({
+			name = "subprocess",
+			playback_only = false,
+			capture_stdout = true,
+			capture_stderr = false,
+			args = {"xclip", "-selection", "clipboard", "-o"},
+		})
+		if res and res.status == 0 and res.stdout and res.stdout ~= "" then
+			return res.stdout:gsub("^%s+", ""):gsub("%s+$", "")
+		end
+
+		local res2 = mp.command_native({
+			name = "subprocess",
+			playback_only = false,
+			capture_stdout = true,
+			capture_stderr = false,
+			args = {"wl-paste", "--no-newline"},
+		})
+		if res2 and res2.status == 0 and res2.stdout and res2.stdout ~= "" then
+			return res2.stdout:gsub("^%s+", ""):gsub("%s+$", "")
+		end
+	end
+
+	return nil
+end
+
+-- ============================================================================
+-- Interactive uosc Menu
+-- ============================================================================
 local function get_recent_history_items(max_count)
 	local series_groups = {}
 	local group_order = {}
@@ -778,8 +876,8 @@ local function open_url_prompt()
 		search_style = "palette",
 		search_debounce = "submit",
 		search_suggestion = (clip and is_web_url(clip)) and clip or "",
-		on_search = "script-message open-url-load",
-		on_paste = "script-message open-url-load",
+		on_search = {"script-message", "open-url-load"},
+		on_paste = {"script-message", "open-url-load"},
 		items = palette_items,
 		keep_open = false,
 	}
@@ -862,7 +960,7 @@ local function open_url_menu()
 		title = "Stream Online",
 		footnote = "Press Ctrl+V to paste & play directly • Escape to close",
 		items = menu_items,
-		on_paste = "script-message open-url-load",
+		on_paste = {"script-message", "open-url-load"},
 		keep_open = false,
 	}
 
@@ -878,11 +976,30 @@ end
 mp.register_script_message("open-url-menu", open_url_menu)
 mp.register_script_message("open-url-prompt", open_url_prompt)
 
-mp.register_script_message("open-url-load", function(url)
-	play_stream_url(url)
+mp.register_script_message("open-url-load", function(...)
+	mp.commandv("script-message-to", "uosc", "close-menu")
+	local args = {...}
+	if #args == 0 then return end
+
+	local url = args[1]
+	-- When called from uosc command_or_event, params is {query, menu.id}
+	-- If string splitting occurred, reconstruct URL while dropping the trailing menu.id
+	if #args > 2 and args[#args] == "open-url-input" then
+		table.remove(args, #args)
+		url = table.concat(args, " ")
+	elseif #args == 2 and args[2] == "open-url-input" then
+		url = args[1]
+	elseif #args > 1 and not is_web_url(args[1]) then
+		url = table.concat(args, " ")
+	end
+
+	if url and url ~= "" then
+		play_stream_url(url)
+	end
 end)
 
 mp.register_script_message("open-url-play-clip", function()
+	mp.commandv("script-message-to", "uosc", "close-menu")
 	local clip = get_clipboard_text()
 	if clip and is_web_url(clip) then
 		play_stream_url(clip)
@@ -892,6 +1009,7 @@ mp.register_script_message("open-url-play-clip", function()
 end)
 
 mp.register_script_message("open-url-load-history", function(key)
+	mp.commandv("script-message-to", "uosc", "close-menu")
 	local entry = stream_history[key]
 	if entry and entry.url then
 		play_stream_url(entry.url, entry.position)
