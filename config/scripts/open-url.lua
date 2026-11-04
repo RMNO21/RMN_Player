@@ -45,6 +45,33 @@ local loading_display_title = nil
 local loading_start_time = 0
 local buffer_feedback_timer = nil
 
+-- Real-time active stream & resilient auto-reconnect state
+local current_stream = {
+	url = nil,
+	title = nil,
+	pos = 0,
+	duration = 0,
+	last_active = 0,
+	canonical_key = nil,
+}
+
+local auto_reconnect = {
+	active = false,
+	attempt = 0,
+	max_attempts = 25,
+	timer = nil,
+	url = nil,
+	pos = 0,
+	title = nil,
+	reason = nil,
+	is_probing = false,
+	key_bound = false,
+}
+
+local is_shutting_down = false
+local is_internal_reconnect_load = false
+local cache_stall_start = nil
+
 -- Ensure temp cache directory exists
 local function ensure_cache_dir()
 	local info = utils.file_info(cache_dir)
@@ -655,19 +682,30 @@ end
 -- ============================================================================
 local function record_current_position()
 	local path = mp.get_property("path") or ""
-	-- ONLY record for online web streams, NEVER for local files
+	-- If path is empty (e.g. during end-file), fall back to current_stream.url
 	if not is_web_url(path) then
-		return
+		if current_stream.url and is_web_url(current_stream.url) then
+			path = current_stream.url
+		else
+			return
+		end
 	end
 
 	local pos = mp.get_property_number("time-pos")
+	if not pos or pos <= 0 then
+		pos = current_stream.pos
+	end
 	local dur = mp.get_property_number("duration")
+	if not dur or dur <= 0 then
+		dur = current_stream.duration
+	end
+
 	if not pos or pos < 5 then return end
 
 	local canonical_key, filename = get_canonical_key(path)
 	if not canonical_key or canonical_key == "" then return end
 
-	local title = mp.get_property("media-title") or mp.get_property("filename") or filename or canonical_key
+	local title = mp.get_property("media-title") or mp.get_property("filename") or current_stream.title or filename or canonical_key
 	if not title or title == "" or is_promo_title(title) then
 		title = (filename and filename ~= "") and filename or canonical_key
 	end
@@ -739,9 +777,177 @@ local function start_loading_monitor(display_title, url)
 end
 
 -- ============================================================================
+-- Resilient Auto-Reconnect Engine
+-- ============================================================================
+local play_stream_url
+
+local function cancel_auto_reconnect(silent)
+	if auto_reconnect.timer then
+		auto_reconnect.timer:kill()
+		auto_reconnect.timer = nil
+	end
+	if auto_reconnect.key_bound then
+		pcall(mp.remove_key_binding, "stream_cancel_reconnect_esc")
+		auto_reconnect.key_bound = false
+	end
+	auto_reconnect.active = false
+	auto_reconnect.attempt = 0
+	auto_reconnect.is_probing = false
+	if not silent then
+		mp.osd_message("Stream auto-reconnect cancelled", 2)
+	end
+end
+
+local function execute_reconnect_probe()
+	if not auto_reconnect.active or not auto_reconnect.url or is_shutting_down then
+		cancel_auto_reconnect(true)
+		return
+	end
+
+	auto_reconnect.attempt = auto_reconnect.attempt + 1
+	if auto_reconnect.attempt > auto_reconnect.max_attempts then
+		msg.warn("Stream auto-reconnect reached max attempts (" .. auto_reconnect.max_attempts .. ")")
+		mp.osd_message("❌ Stream reconnect failed (network offline).\nPress 'Ctrl+R' or open Stream menu to retry.", 6)
+		cancel_auto_reconnect(true)
+		return
+	end
+
+	local attempt = auto_reconnect.attempt
+	local max_att = auto_reconnect.max_attempts
+	local resume_pos = auto_reconnect.pos or 0
+	local mins = math.floor(resume_pos / 60)
+	local secs = math.floor(resume_pos % 60)
+	local pos_str = string.format("%02d:%02d", mins, secs)
+
+	mp.osd_message(string.format("⚡ Network interrupted. Reconnecting... (Attempt %d/%d)\n📍 Saved at %s  •  Press ESC to cancel", attempt, max_att, pos_str), 3.2)
+
+	local user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+	local is_win = (mp.get_property_native("platform") == "windows" or package.config:sub(1,1) == "\\")
+	local curl_bin = is_win and "curl.exe" or "curl"
+	local args = {
+		curl_bin,
+		"-I", "-L", "-s", "-k",
+		"--connect-timeout", "3",
+		"--max-time", "4",
+		"-A", user_agent,
+		auto_reconnect.url,
+	}
+
+	auto_reconnect.is_probing = true
+
+	mp.command_native_async({
+		name = "subprocess",
+		playback_only = false,
+		capture_stdout = true,
+		capture_stderr = true,
+		args = args,
+	}, function(success, res, err)
+		auto_reconnect.is_probing = false
+		if not auto_reconnect.active or is_shutting_down then return end
+
+		local is_online = false
+		if success and res and res.status == 0 and res.stdout then
+			for status_line in res.stdout:gmatch("HTTP/%d%.?%d?%s+(%d%d%d)") do
+				local code = tonumber(status_line)
+				if code and (code == 200 or code == 206 or (code >= 300 and code < 400)) then
+					is_online = true
+					break
+				end
+			end
+		end
+
+		if is_online then
+			msg.info("Network connection verified! Automatically resuming stream at " .. pos_str)
+			mp.osd_message(string.format("⚡ Network restored! Resuming stream at %s...", pos_str), 2.5)
+			local rec_url = auto_reconnect.url
+			local rec_pos = auto_reconnect.pos
+			cancel_auto_reconnect(true)
+			is_internal_reconnect_load = true
+			play_stream_url(rec_url, rec_pos)
+		else
+			-- Still offline: retry after 2.5 seconds
+			if auto_reconnect.active and not is_shutting_down then
+				auto_reconnect.timer = mp.add_timeout(2.5, execute_reconnect_probe)
+			end
+		end
+	end)
+end
+
+local function trigger_auto_reconnect(url, pos, cause)
+	if not url or not is_web_url(url) or is_shutting_down then return end
+
+	if auto_reconnect.timer then
+		auto_reconnect.timer:kill()
+		auto_reconnect.timer = nil
+	end
+
+	-- Rewind 1.5 seconds for uninterrupted audio/dialogue resumption
+	local safe_pos = math.max(0, (pos or 0) - 1.5)
+
+	auto_reconnect.active = true
+	auto_reconnect.attempt = 0
+	auto_reconnect.url = url
+	auto_reconnect.pos = safe_pos
+	auto_reconnect.reason = cause
+	auto_reconnect.is_probing = false
+
+	if not auto_reconnect.key_bound then
+		pcall(function()
+			mp.add_forced_key_binding("ESC", "stream_cancel_reconnect_esc", function()
+				cancel_auto_reconnect(false)
+			end)
+			auto_reconnect.key_bound = true
+		end)
+	end
+
+	local mins = math.floor(safe_pos / 60)
+	local secs = math.floor(safe_pos % 60)
+	msg.warn(string.format("Auto-reconnecting stream: %s at %02d:%02d (cause: %s)", url, mins, secs, tostring(cause)))
+	mp.osd_message(string.format("⚡ Network interrupted. Reconnecting...\n📍 Saved at %02d:%02d  •  Press ESC to cancel", mins, secs), 3.0)
+
+	auto_reconnect.timer = mp.add_timeout(1.5, execute_reconnect_probe)
+end
+
+local function manual_reconnect_stream()
+	local target_url = nil
+	local target_pos = 0
+
+	if current_stream.url and is_web_url(current_stream.url) then
+		target_url = current_stream.url
+		target_pos = current_stream.pos or 0
+	elseif auto_reconnect.url and is_web_url(auto_reconnect.url) then
+		target_url = auto_reconnect.url
+		target_pos = auto_reconnect.pos or 0
+	else
+		-- Find most recent item from watch history
+		local recent = get_recent_history_items(1)
+		if recent and #recent > 0 and recent[1].key then
+			local entry = stream_history[recent[1].key]
+			if entry and entry.url and is_web_url(entry.url) then
+				target_url = entry.url
+				target_pos = entry.position or 0
+			end
+		end
+	end
+
+	if not target_url then
+		mp.osd_message("No stream available to reconnect", 2.5)
+		return
+	end
+
+	cancel_auto_reconnect(true)
+	stop_loading_monitor()
+	local mins = math.floor(target_pos / 60)
+	local secs = math.floor(target_pos % 60)
+	msg.info("Manual stream reconnect requested for: " .. target_url .. " at " .. string.format("%02d:%02d", mins, secs))
+	mp.osd_message(string.format("🔄 Reconnecting stream at %02d:%02d...", mins, secs), 2.5)
+	play_stream_url(target_url, math.max(0, target_pos - 1.5))
+end
+
+-- ============================================================================
 -- Stream Playback Engine (Zero-Bloat Direct URL Loading)
 -- ============================================================================
-local function play_stream_url(url, target_pos)
+play_stream_url = function(url, target_pos)
 	if not url or url == "" then return end
 	url = url:gsub("^%s+", ""):gsub("%s+$", ""):gsub('^["\']', ''):gsub('["\']$', '')
 
@@ -752,6 +958,11 @@ local function play_stream_url(url, target_pos)
 
 	-- Dismiss any active uosc menu/palette immediately
 	mp.commandv("script-message-to", "uosc", "close-menu")
+
+	if not is_internal_reconnect_load then
+		cancel_auto_reconnect(true)
+	end
+	is_internal_reconnect_load = false
 
 	-- Set modern clean browser User-Agent
 	local user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
@@ -776,9 +987,16 @@ local function play_stream_url(url, target_pos)
 	-- Store pending resume position to be safely validated against actual duration in file-loaded
 	pending_resume_pos = resume_pos
 
+	current_stream.url = url
+	current_stream.pos = resume_pos or 0
+	current_stream.duration = (entry and entry.duration) or 0
+	current_stream.canonical_key = canonical_key
+	current_stream.last_active = mp.get_time()
+
 	local raw_name = (filename ~= "" and filename or url:sub(1, 50))
 	local display_title = (entry and entry.title and entry.title ~= "") and entry.title or format_clean_title(raw_name)
 	if not display_title or display_title == "" then display_title = raw_name end
+	current_stream.title = display_title
 
 	msg.info("Playing stream: " .. url .. " (Canonical: " .. canonical_key .. ", Resume: " .. tostring(pending_resume_pos or 0) .. "s)")
 
@@ -795,7 +1013,8 @@ end
 mp.register_event("playback-restart", function()
 	local path = mp.get_property("path") or ""
 	if is_loading_stream or is_web_url(path) then
-		local title = loading_display_title or mp.get_property("media-title") or mp.get_property("filename") or "Online Stream"
+		cancel_auto_reconnect(true)
+		local title = loading_display_title or mp.get_property("media-title") or mp.get_property("filename") or current_stream.title or "Online Stream"
 		stop_loading_monitor()
 		mp.osd_message("▶ Playing: " .. title, 2.5)
 	end
@@ -806,11 +1025,17 @@ mp.register_event("file-loaded", function()
 	if not is_web_url(path) then
 		pending_resume_pos = nil
 		stop_loading_monitor()
+		cancel_auto_reconnect(true)
 		return
 	end
 
+	cancel_auto_reconnect(true)
+	current_stream.url = path
+	current_stream.last_active = mp.get_time()
+
 	local origin = get_origin(path)
 	local canonical_key = get_canonical_key(path)
+	current_stream.canonical_key = canonical_key
 
 	-- Check for saved watch-later position
 	local resume_pos = pending_resume_pos
@@ -844,6 +1069,36 @@ end)
 mp.register_event("end-file", function(event)
 	record_current_position()
 
+	local stream_url = current_stream.url
+	local stream_pos = current_stream.pos
+	local stream_dur = current_stream.duration
+
+	if is_shutting_down then
+		stop_loading_monitor()
+		cancel_auto_reconnect(true)
+		return
+	end
+
+	if stream_url and is_web_url(stream_url) then
+		local is_drop = false
+		if event.reason == "error" then
+			is_drop = true
+		elseif event.reason == "eof" then
+			-- Did it finish naturally, or was it a network cut-off?
+			if stream_dur > 30 and stream_pos < (stream_dur * 0.92) then
+				is_drop = true
+			elseif stream_dur <= 0 and stream_pos > 5 then
+				is_drop = true
+			end
+		end
+
+		if is_drop then
+			stop_loading_monitor()
+			trigger_auto_reconnect(stream_url, stream_pos, event.reason)
+			return
+		end
+	end
+
 	if event.reason == "error" then
 		stop_loading_monitor()
 		local err = event.file_error or event.error or "Connection error or stream unavailable"
@@ -858,8 +1113,76 @@ end)
 
 mp.register_event("pause", record_current_position)
 mp.register_event("shutdown", function()
+	is_shutting_down = true
+	cancel_auto_reconnect(true)
 	record_current_position()
 	prune_cache()
+end)
+
+-- Real-time property observers to ensure positions are always tracked accurately
+mp.observe_property("time-pos", "number", function(_, pos)
+	if pos and pos > 0 and current_stream.url then
+		current_stream.pos = pos
+		current_stream.last_active = mp.get_time()
+	end
+end)
+
+mp.observe_property("duration", "number", function(_, dur)
+	if dur and dur > 0 and current_stream.url then
+		current_stream.duration = dur
+	end
+end)
+
+mp.observe_property("path", "string", function(_, path)
+	if path and is_web_url(path) then
+		current_stream.url = path
+		current_stream.last_active = mp.get_time()
+		local ckey, fn = get_canonical_key(path)
+		current_stream.canonical_key = ckey
+	else
+		if not auto_reconnect.active then
+			current_stream.url = nil
+			current_stream.pos = 0
+			current_stream.duration = 0
+		end
+	end
+end)
+
+-- Background stall watchdog (detects dead TCP sockets where player waits for cache with 0 speed)
+mp.add_periodic_timer(2.0, function()
+	if is_shutting_down or auto_reconnect.active then return end
+	if not current_stream.url or not is_web_url(current_stream.url) then
+		cache_stall_start = nil
+		return
+	end
+
+	local path = mp.get_property("path") or ""
+	if not is_web_url(path) then
+		cache_stall_start = nil
+		return
+	end
+
+	local is_paused_for_cache = mp.get_property_bool("paused-for-cache", false)
+	local is_core_idle = mp.get_property_bool("core-idle", false)
+	local is_user_paused = mp.get_property_bool("pause", false)
+
+	if (is_paused_for_cache or is_core_idle) and not is_user_paused then
+		local buf_pct = mp.get_property_number("buffering-progress", 0)
+		local speed = mp.get_property_number("cache-speed", 0)
+
+		if not cache_stall_start then
+			cache_stall_start = mp.get_time()
+		else
+			local stalled_sec = mp.get_time() - cache_stall_start
+			if stalled_sec > 12 and speed <= 0 and buf_pct <= 0 then
+				msg.warn(string.format("Stream download stalled for %.1fs (speed=%d, buf=%d%%). Triggering auto-reconnect...", stalled_sec, speed, buf_pct))
+				cache_stall_start = nil
+				trigger_auto_reconnect(current_stream.url, current_stream.pos, "stall_timeout")
+			end
+		end
+	else
+		cache_stall_start = nil
+	end
 end)
 -- ============================================================================
 -- Clipboard Helper
@@ -1032,6 +1355,22 @@ local function open_url_menu()
 
 	local menu_items = {}
 
+	-- Resilient Stream Reconnect Action (if reconnecting or active/interrupted stream exists)
+	if auto_reconnect.active or (current_stream and current_stream.url and is_web_url(current_stream.url)) then
+		local rec_pos = (auto_reconnect.active and auto_reconnect.pos) or current_stream.pos or 0
+		local mins = math.floor(rec_pos / 60)
+		local secs = math.floor(rec_pos % 60)
+		local act_title = auto_reconnect.active and "⚡ Reconnect Stream Now" or "🔄 Reconnect / Reload Current Stream"
+		table.insert(menu_items, {
+			title = act_title,
+			hint = string.format("Resume at %02d:%02d", mins, secs),
+			icon = "refresh",
+			value = "script-message stream-reconnect",
+			bold = true,
+			separator = true,
+		})
+	end
+
 	if clip_is_url then
 		local _, clean_name = get_canonical_key(clip)
 		local preview = format_clean_title(clean_name ~= "" and clean_name or clip)
@@ -1180,6 +1519,12 @@ mp.register_script_message("open-url-purge-cache", function()
 	local cleaned_mb = prune_cache()
 	mp.osd_message("Stream cache cleared. Current size: " .. cleaned_mb .. " MB", 2.5)
 	open_url_menu()
+end)
+
+-- Manual and emergency stream reconnect triggers
+mp.register_script_message("stream-reconnect", manual_reconnect_stream)
+mp.register_script_message("stream-cancel-reconnect", function()
+	cancel_auto_reconnect(false)
 end)
 
 -- Direct global shortcut: Paste & Play immediately

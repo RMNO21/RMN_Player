@@ -1,11 +1,11 @@
 {
   "name": "RMN-Player",
-  "version": "1.5.3",
-  "version_code": 153,
+  "version": "1.5.4",
+  "version_code": 154,
   "release_date": "2026-11-04",
   "channel": "stable",
   "repository": "RMNO21/RMN_Player",
-  "changelog": "Add: Automatic previous episode detection & queuing — when playing an online TV series stream, automatically probes if the preceding episode exists on the server and inserts it seamlessly before the current episode in the playlist.",
+  "changelog": "Fix: Stream network resilience & auto-reconnect engine — automatically reconnects and resumes playback without closing the player when internet disconnects and restores, adds dead socket stall watchdog, native FFmpeg reconnect on network errors, Ctrl+R reconnect shortcut, and 1-click Reconnect menu button.",
   "html_url": "https://github.com/RMNO21/RMN_Player",
   "download_url": "https://github.com/RMNO21/RMN_Player/archive/refs/heads/main.zip"
 }

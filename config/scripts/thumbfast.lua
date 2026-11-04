@@ -490,7 +490,7 @@ local function spawn(time)
         table.insert(args, "--stream-buffer-size=256KiB")
         table.insert(args, "--demuxer-lavf-analyzeduration=1.0")
         table.insert(args, "--demuxer-lavf-probesize=256000")
-        table.insert(args, "--stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_delay_max=2")
+        table.insert(args, "--stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_on_network_error=1,reconnect_on_http_error=5xx,reconnect_at_eof=1,reconnect_delay_max=5")
         table.insert(args, "--tls-verify=no")
 
         local user_agent = mp.get_property("user-agent") or "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
