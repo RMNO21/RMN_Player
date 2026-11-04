@@ -62,43 +62,302 @@ end
 ensure_cache_dir()
 
 -- ============================================================================
--- URL Protocol Verification
+-- URL Protocol Verification & Canonical Keys
 -- ============================================================================
 local function is_web_url(url)
 	if not url or type(url) ~= "string" then return false end
 	return url:match("^https?://") ~= nil or url:match("^ytdl://") ~= nil
 end
 
+-- Extracts origin domain for Referer/Origin header injection
+local function get_origin(url)
+	if not url then return nil end
+	local proto, host = url:match("^(https?://)([^/?#:]+)")
+	if proto and host then
+		return proto .. host .. "/"
+	end
+	return nil
+end
+
+-- Strips ephemeral query parameters to create a permanent signature
+local function get_canonical_key(url)
+	if not url then return "", "" end
+	local base_path = url:match("^(https?://[^?#]+)") or url:match("^([^?#]+)") or url
+	base_path = base_path:lower()
+
+	-- Also extract clean filename
+	local filename = base_path:match("([^/\\\\]+)$") or base_path
+	return base_path, filename
+end
+
 -- ============================================================================
--- JSON Persistence
+-- Title Sanitization, Series & Movie Parser Engine
 -- ============================================================================
-local function load_history()
-	local f = io.open(history_file, "r")
-	if f then
-		local content = f:read("*a")
-		f:close()
-		if content and content ~= "" then
-			local ok, data = pcall(utils.parse_json, content)
-			if ok and type(data) == "table" then
-				local clean = {}
-				for k, v in pairs(data) do
-					if type(v) == "table" and is_web_url(v.url or k) then
-						local pos = tonumber(v.position) or 0
-						local dur = tonumber(v.duration) or 0
-						if dur > 0 and pos >= (dur * 0.90) then
-							v.position = 0
-							v.completed = true
-						end
-						clean[k] = v
-					end
-				end
-				stream_history = clean
-				msg.debug("Loaded stream watch history (" .. #stream_history .. " entries)")
-				return
+local function is_promo_title(str)
+	if not str or str == "" then return true end
+	local s = str:lower():match("^%s*(.-)%s*$")
+	if s:match("^https?://") or s:match("^www%.") or s:match("^@") then return true end
+	if s:match("%.mkv$") or s:match("%.mp4$") or s:match("%.avi$") or s:match("%.webm$") or s:match("%.mov$") or s:match("%.ts$") then
+		return false
+	end
+	local ext = s:match("%.([a-z]+)$")
+	if ext then
+		local tlds = {
+			com=true, ir=true, net=true, org=true, info=true, biz=true, top=true,
+			xyz=true, me=true, tv=true, cc=true, co=true, io=true, ru=true, li=true,
+			site=true, vip=true, club=true, online=true, pro=true, app=true, dev=true
+		}
+		if tlds[ext] then return true end
+	end
+	return false
+end
+
+local function parse_series_info(text)
+	if not text or text == "" then return nil, nil, nil end
+	local filename = text:match("([^/\\\\]+)$") or text
+	filename = filename:gsub("%?.*$", "")
+	filename = filename:gsub("%.%w%w%w?%w?$", "")
+
+	local norm = filename:gsub("[%._]+", " ")
+
+	-- Pattern 1: S01E02, S1E2, s01e02, S01.E02, S01_E02
+	local s, e = norm:match("[%s%[%(]+[sS](%d+)[%s%.%-_]*[eE](%d+)")
+	if not s then s, e = norm:match("^[sS](%d+)[%s%.%-_]*[eE](%d+)") end
+	if s and e then
+		local prefix = norm:match("^(.-)[%s%[%(]+[sS]" .. s) or ""
+		local skey = prefix:gsub("[^%w]+", " "):match("^%s*(.-)%s*$"):lower()
+		if #skey < 2 then skey = "series" end
+		return skey, tonumber(s), tonumber(e)
+	end
+
+	-- Pattern 2: Season 2 ... Episode 4
+	local s2, e2 = norm:match("[%s%[%(]+[sS]eason[%s%.%-_]*(%d+)[%s%.%-_]+[eE]p?i?s?o?d?e?[%s%.%-_]*(%d+)")
+	if not s2 then s2, e2 = norm:match("^[sS]eason[%s%.%-_]*(%d+)[%s%.%-_]+[eE]p?i?s?o?d?e?[%s%.%-_]*(%d+)") end
+	if s2 and e2 then
+		local p2 = norm:match("^(.-)[%s%[%(]+[sS]eason") or ""
+		local skey = p2:gsub("[^%w]+", " "):match("^%s*(.-)%s*$"):lower()
+		if #skey < 2 then skey = "series" end
+		return skey, tonumber(s2), tonumber(e2)
+	end
+
+	-- Pattern 3: 4x09 or 04x09
+	local s3, e3 = norm:match("[%s%[%(]+(%d+)[xX](%d+)")
+	if not s3 then s3, e3 = norm:match("^(%d+)[xX](%d+)") end
+	if s3 and e3 then
+		local p3 = norm:match("^(.-)[%s%[%(]+" .. s3 .. "[xX]") or ""
+		local skey = p3:gsub("[^%w]+", " "):match("^%s*(.-)%s*$"):lower()
+		if #skey < 2 then skey = "series" end
+		return skey, tonumber(s3), tonumber(e3)
+	end
+
+	-- Pattern 4: EP05 or Episode 05 or E05
+	local e4 = norm:match("[%s%[%(]+[eE][pP]?[iI]?[sS]?[oO]?[dD]?[eE]?[%s%.%-_]*(%d+)")
+	if not e4 then e4 = norm:match("^[eE][pP]?[iI]?[sS]?[oO]?[dD]?[eE]?[%s%.%-_]*(%d+)") end
+	if e4 then
+		local p4 = norm:match("^(.-)[%s%[%(]+[eE][pP]?") or ""
+		local skey = p4:gsub("[^%w]+", " "):match("^%s*(.-)%s*$"):lower()
+		if #skey < 2 then skey = "series" end
+		return skey, 1, tonumber(e4)
+	end
+
+	return nil, nil, nil
+end
+
+local function get_clean_movie_key(text, fn)
+	local s = text or fn or ""
+	s = s:gsub("%?.*$", ""):gsub("%.%w%w%w?%w?$", "")
+	s = s:match("([^/\\\\]+)$") or s
+	local norm = s:gsub("[%._]+", " ")
+	local year = norm:match("[%s%[%(](19%d%d)[%s%]%)]") or norm:match("[%s%[%(](20%d%d)[%s%]%)]")
+	             or norm:match("[%s%[%(](19%d%d)$") or norm:match("[%s%[%(](20%d%d)$")
+	local base = norm
+	if year then
+		local prefix = norm:match("^(.-)[%s%[%(]" .. year)
+		if prefix and #prefix >= 2 then base = prefix end
+	end
+	local lower_base = " " .. base:lower() .. " "
+	lower_base = lower_base:gsub("%b()", " "):gsub("%b[]", " ")
+	local tags = {
+		"1080p", "720p", "480p", "2160p", "4k", "bluray", "brrip", "bdrip",
+		"webrip", "web dl", "webdl", "hdrip", "x264", "x265", "hevc", "softsub",
+		"farsi", "sub", "dual audio", "dubbed", "remux"
+	}
+	for _, tag in ipairs(tags) do
+		local p = lower_base:find(" " .. tag .. " ", 1, true)
+		if p then lower_base = lower_base:sub(1, p) end
+	end
+	local clean = lower_base:gsub("[^%w]+", " "):match("^%s*(.-)%s*$")
+	if #clean >= 2 then
+		local words = {}
+		for w in clean:gmatch("%S+") do
+			if #words < 6 then table.insert(words, w) end
+		end
+		return table.concat(words, " ")
+	end
+	return norm:lower():match("^%s*(.-)%s*$")
+end
+
+local function format_clean_title(raw)
+	if not raw or raw == "" then return "" end
+	local name = raw:match("([^/\\\\]+)$") or raw
+	name = name:gsub("%?.*$", "")
+	name = name:gsub("%.%w%w%w?%w?$", "")
+
+	local norm = name:gsub("[%._]+", " ")
+
+	local s, e = norm:match("[%s%[%(]+[sS](%d+)[%s%.%-_]*[eE](%d+)")
+	if not s then s, e = norm:match("^[sS](%d+)[%s%.%-_]*[eE](%d+)") end
+	if s and e then
+		local prefix = norm:match("^(.-)[%s%[%(]+[sS]" .. s) or ""
+		local clean_show = prefix:gsub("[^%w]+", " "):match("^%s*(.-)%s*$")
+		if not clean_show or #clean_show < 2 then clean_show = "Episode" end
+		local cap = clean_show:gsub("(%a)([%w_']*)", function(first, rest) return first:upper() .. rest:lower() end)
+		return string.format("%s — S%02dE%02d", cap, tonumber(s), tonumber(e))
+	end
+
+	local s2, e2 = norm:match("[%s%[%(]+[sS]eason[%s%.%-_]*(%d+)[%s%.%-_]+[eE]p?i?s?o?d?e?[%s%.%-_]*(%d+)")
+	if not s2 then s2, e2 = norm:match("^[sS]eason[%s%.%-_]*(%d+)[%s%.%-_]+[eE]p?i?s?o?d?e?[%s%.%-_]*(%d+)") end
+	if s2 and e2 then
+		local p2 = norm:match("^(.-)[%s%[%(]+[sS]eason") or ""
+		local clean_show = p2:gsub("[^%w]+", " "):match("^%s*(.-)%s*$")
+		if not clean_show or #clean_show < 2 then clean_show = "Episode" end
+		local cap = clean_show:gsub("(%a)([%w_']*)", function(first, rest) return first:upper() .. rest:lower() end)
+		return string.format("%s — S%02dE%02d", cap, tonumber(s2), tonumber(e2))
+	end
+
+	local s3, e3 = norm:match("[%s%[%(]+(%d+)[xX](%d+)")
+	if not s3 then s3, e3 = norm:match("^(%d+)[xX](%d+)") end
+	if s3 and e3 then
+		local p3 = norm:match("^(.-)[%s%[%(]+" .. s3 .. "[xX]") or ""
+		local clean_show = p3:gsub("[^%w]+", " "):match("^%s*(.-)%s*$")
+		if not clean_show or #clean_show < 2 then clean_show = "Episode" end
+		local cap = clean_show:gsub("(%a)([%w_']*)", function(first, rest) return first:upper() .. rest:lower() end)
+		return string.format("%s — S%02dE%02d", cap, tonumber(s3), tonumber(e3))
+	end
+
+	local e4 = norm:match("[%s%[%(]+[eE][pP]?[iI]?[sS]?[oO]?[dD]?[eE]?[%s%.%-_]*(%d+)")
+	if not e4 then e4 = norm:match("^[eE][pP]?[iI]?[sS]?[oO]?[dD]?[eE]?[%s%.%-_]*(%d+)") end
+	if e4 then
+		local p4 = norm:match("^(.-)[%s%[%(]+[eE][pP]?") or ""
+		local clean_show = p4:gsub("[^%w]+", " "):match("^%s*(.-)%s*$")
+		if not clean_show or #clean_show < 2 then clean_show = "Episode" end
+		local cap = clean_show:gsub("(%a)([%w_']*)", function(first, rest) return first:upper() .. rest:lower() end)
+		return string.format("%s — Episode %d", cap, tonumber(e4))
+	end
+
+	local y = norm:match("[%s%[%(](19%d%d)[%s%]%)]") or norm:match("[%s%[%(](20%d%d)[%s%]%)]")
+	          or norm:match("[%s%[%(](19%d%d)$") or norm:match("[%s%[%(](20%d%d)$")
+	if y then
+		local prefix = norm:match("^(.-)[%s%[%(]" .. y)
+		if prefix then
+			local clean_title = prefix:gsub("[^%w]+", " "):match("^%s*(.-)%s*$")
+			if #clean_title >= 2 then
+				local cap = clean_title:gsub("(%a)([%w_']*)", function(first, rest) return first:upper() .. rest:lower() end)
+				return string.format("%s (%s)", cap, y)
 			end
 		end
 	end
-	stream_history = {}
+
+	local clean_plain = norm:gsub("[^%w]+", " "):match("^%s*(.-)%s*$")
+	if #clean_plain > 0 then
+		local cap = clean_plain:gsub("(%a)([%w_']*)", function(first, rest) return first:upper() .. rest:lower() end)
+		local words = {}
+		for w in cap:gmatch("%S+") do
+			if #words < 5 then table.insert(words, w) end
+		end
+		return table.concat(words, " ")
+	end
+
+	return name
+end
+
+-- ============================================================================
+-- History Persistence & Deduplication Engine
+-- ============================================================================
+local function prune_history_duplicates()
+	if not stream_history or type(stream_history) ~= "table" then return end
+
+	local groups = {}
+	local group_order = {}
+
+	for k, v in pairs(stream_history) do
+		local url = (type(v) == "table" and v.url) or k
+		-- STRICT RULE 1: Only web URLs are allowed in Stream Online history. Purge all local files!
+		if not is_web_url(url) or not is_web_url(k) then
+			stream_history[k] = nil
+		else
+			local _, fn = get_canonical_key(url)
+			local raw_title = v.title or fn or k
+			if not raw_title or raw_title == "" or is_promo_title(raw_title) then
+				raw_title = (fn and fn ~= "") and fn or k
+			end
+
+			local skey, season, ep = parse_series_info(raw_title)
+			if not skey and fn and fn ~= "" then
+				skey, season, ep = parse_series_info(fn)
+			end
+
+			local entity_type, entity_id
+			if skey then
+				entity_type = "series"
+				entity_id = "series:" .. skey
+			else
+				entity_type = "movie"
+				local mkey = get_clean_movie_key(raw_title, fn)
+				entity_id = "movie:" .. mkey
+			end
+
+			if not groups[entity_id] then
+				groups[entity_id] = {
+					entity_type = entity_type,
+					items = {}
+				}
+				table.insert(group_order, entity_id)
+			end
+
+			table.insert(groups[entity_id].items, {
+				key = k,
+				season = season or 1,
+				episode = ep or 1,
+				position = tonumber(v.position) or 0,
+				duration = tonumber(v.duration) or 0,
+				completed = v.completed or false,
+				updated_at = tonumber(v.updated_at) or 0,
+			})
+		end
+	end
+
+	-- For each entity group, keep ONLY the representative entry and purge all others:
+	for _, gid in ipairs(group_order) do
+		local grp = groups[gid]
+		local list = grp.items
+		if #list > 1 then
+			if grp.entity_type == "series" then
+				-- STRICT RULE 2: For a TV series, ONLY the last episode remains in history!
+				table.sort(list, function(a, b)
+					local a_num = (a.season or 1) * 10000 + (a.episode or 1)
+					local b_num = (b.season or 1) * 10000 + (b.episode or 1)
+					if a_num ~= b_num then
+						return a_num > b_num
+					end
+					return (a.updated_at or 0) > (b.updated_at or 0)
+				end)
+			else
+				-- STRICT RULE 3: For a movie, ONLY the latest watched entry remains in history!
+				table.sort(list, function(a, b)
+					if (a.updated_at or 0) ~= (b.updated_at or 0) then
+						return (a.updated_at or 0) > (b.updated_at or 0)
+					end
+					return (a.position or 0) > (b.position or 0)
+				end)
+			end
+
+			-- list[1] is the sole survivor; prune older duplicates from history:
+			for i = 2, #list do
+				stream_history[list[i].key] = nil
+			end
+		end
+	end
 end
 
 local function save_history()
@@ -111,6 +370,37 @@ local function save_history()
 			f:close()
 		end
 	end
+end
+
+local function load_history()
+	local f = io.open(history_file, "r")
+	if f then
+		local content = f:read("*a")
+		f:close()
+		if content and content ~= "" then
+			local ok, data = pcall(utils.parse_json, content)
+			if ok and type(data) == "table" then
+				local clean = {}
+				for k, v in pairs(data) do
+					if type(v) == "table" and is_web_url(v.url or k) and is_web_url(k) then
+						local pos = tonumber(v.position) or 0
+						local dur = tonumber(v.duration) or 0
+						if dur > 0 and pos >= (dur * 0.90) then
+							v.position = 0
+							v.completed = true
+						end
+						clean[k] = v
+					end
+				end
+				stream_history = clean
+				prune_history_duplicates()
+				save_history()
+				msg.debug("Loaded stream watch history (" .. #stream_history .. " entries)")
+				return
+			end
+		end
+	end
+	stream_history = {}
 end
 
 -- ============================================================================
@@ -183,184 +473,7 @@ local function get_cache_size_mb()
 	return math.floor(total / (1024 * 1024))
 end
 
--- ============================================================================
--- URL Processing & Canonical Keys (Anti-Expiry Resumption)
--- ============================================================================
 
--- Extracts origin domain for Referer/Origin header injection
-local function get_origin(url)
-	if not url then return nil end
-	local proto, host = url:match("^(https?://)([^/?#:]+)")
-	if proto and host then
-		return proto .. host .. "/"
-	end
-	return nil
-end
-
--- Strips ephemeral query parameters to create a permanent signature
-local function get_canonical_key(url)
-	if not url then return "" end
-	local base_path = url:match("^(https?://[^?#]+)") or url:match("^([^?#]+)") or url
-	base_path = base_path:lower()
-
-	-- Also extract clean filename
-	local filename = base_path:match("([^/]+)$") or base_path
-	return base_path, filename
-end
-
--- ============================================================================
--- Title Sanitization & Series Parser Engine
--- ============================================================================
-local function is_promo_title(str)
-	if not str or str == "" then return true end
-	local s = str:lower():match("^%s*(.-)%s*$")
-	if s:match("^https?://") or s:match("^www%.") or s:match("^@") then return true end
-	if s:match("%.mkv$") or s:match("%.mp4$") or s:match("%.avi$") or s:match("%.webm$") or s:match("%.mov$") or s:match("%.ts$") then
-		return false
-	end
-	local ext = s:match("%.([a-z]+)$")
-	if ext then
-		local tlds = {
-			com=true, ir=true, net=true, org=true, info=true, biz=true, top=true,
-			xyz=true, me=true, tv=true, cc=true, co=true, io=true, ru=true, li=true,
-			site=true, vip=true, club=true, online=true, pro=true, app=true, dev=true
-		}
-		if tlds[ext] then return true end
-	end
-	return false
-end
-
-local function parse_series_info(text)
-	if not text or text == "" then return nil, nil, nil end
-	local filename = text:match("([^/\\]+)$") or text
-	filename = filename:gsub("%?.*$", "")
-	filename = filename:gsub("%.%w%w%w?%w?$", "")
-
-	local norm = filename:gsub("[%._]+", " ")
-
-	-- Pattern 1: S01E02, S1E2, s01e02
-	local s, e = norm:match("[%s%[]+[sS](%d+)[%s%.%-_]*[eE](%d+)")
-	if s and e then
-		local prefix = norm:match("^(.-)[%s%[]+[sS]" .. s)
-		if prefix then
-			local skey = prefix:gsub("[^%w]+", " "):match("^%s*(.-)%s*$"):lower()
-			if #skey >= 2 then return skey, tonumber(s), tonumber(e) end
-		end
-	end
-
-	-- Pattern 2: Season 2 ... Episode 4
-	local s2, e2 = norm:match("[%s%[]+[sS]eason[%s%.%-_]*(%d+)[%s%.%-_]+[eE]p?i?s?o?d?e?[%s%.%-_]*(%d+)")
-	if s2 and e2 then
-		local p2 = norm:match("^(.-)[%s%[]+[sS]eason")
-		if p2 then
-			local skey = p2:gsub("[^%w]+", " "):match("^%s*(.-)%s*$"):lower()
-			if #skey >= 2 then return skey, tonumber(s2), tonumber(e2) end
-		end
-	end
-
-	-- Pattern 3: 4x09 or 04x09
-	local s3, e3 = norm:match("[%s%[]+(%d+)[xX](%d+)")
-	if s3 and e3 then
-		local p3 = norm:match("^(.-)[%s%[]+" .. s3 .. "[xX]")
-		if p3 then
-			local skey = p3:gsub("[^%w]+", " "):match("^%s*(.-)%s*$"):lower()
-			if #skey >= 2 then return skey, tonumber(s3), tonumber(e3) end
-		end
-	end
-
-	-- Pattern 4: EP05 or Episode 05 or E05 (standalone episode without season)
-	local e4 = norm:match("[%s%[]+[eE][pP]?[iI]?[sS]?[oO]?[dD]?[eE]?[%s%.%-_]*(%d+)")
-	if e4 then
-		local p4 = norm:match("^(.-)[%s%[]+[eE][pP]?")
-		if p4 then
-			local skey = p4:gsub("[^%w]+", " "):match("^%s*(.-)%s*$"):lower()
-			if #skey >= 2 then return skey, 1, tonumber(e4) end
-		end
-	end
-
-	return nil, nil, nil
-end
-
-local function format_clean_title(raw)
-	if not raw or raw == "" then return "" end
-	local name = raw:match("([^/\\]+)$") or raw
-	name = name:gsub("%?.*$", "")
-	name = name:gsub("%.%w%w%w?%w?$", "")
-
-	local norm = name:gsub("[%._]+", " ")
-
-	local s, e = norm:match("[%s%[]+[sS](%d+)[%s%.%-_]*[eE](%d+)")
-	if s and e then
-		local prefix = norm:match("^(.-)[%s%[]+[sS]" .. s)
-		if prefix then
-			local clean_show = prefix:gsub("[^%w]+", " "):match("^%s*(.-)%s*$")
-			if #clean_show >= 2 then
-				local cap = clean_show:gsub("(%a)([%w_']*)", function(first, rest) return first:upper() .. rest:lower() end)
-				return string.format("%s — S%02dE%02d", cap, tonumber(s), tonumber(e))
-			end
-		end
-	end
-
-	local s2, e2 = norm:match("[%s%[]+[sS]eason[%s%.%-_]*(%d+)[%s%.%-_]+[eE]p?i?s?o?d?e?[%s%.%-_]*(%d+)")
-	if s2 and e2 then
-		local p2 = norm:match("^(.-)[%s%[]+[sS]eason")
-		if p2 then
-			local clean_show = p2:gsub("[^%w]+", " "):match("^%s*(.-)%s*$")
-			if #clean_show >= 2 then
-				local cap = clean_show:gsub("(%a)([%w_']*)", function(first, rest) return first:upper() .. rest:lower() end)
-				return string.format("%s — S%02dE%02d", cap, tonumber(s2), tonumber(e2))
-			end
-		end
-	end
-
-	local s3, e3 = norm:match("[%s%[]+(%d+)[xX](%d+)")
-	if s3 and e3 then
-		local p3 = norm:match("^(.-)[%s%[]+" .. s3 .. "[xX]")
-		if p3 then
-			local clean_show = p3:gsub("[^%w]+", " "):match("^%s*(.-)%s*$")
-			if #clean_show >= 2 then
-				local cap = clean_show:gsub("(%a)([%w_']*)", function(first, rest) return first:upper() .. rest:lower() end)
-				return string.format("%s — S%02dE%02d", cap, tonumber(s3), tonumber(e3))
-			end
-		end
-	end
-
-	local e4 = norm:match("[%s%[]+[eE][pP]?[iI]?[sS]?[oO]?[dD]?[eE]?[%s%.%-_]*(%d+)")
-	if e4 then
-		local p4 = norm:match("^(.-)[%s%[]+[eE][pP]?")
-		if p4 then
-			local clean_show = p4:gsub("[^%w]+", " "):match("^%s*(.-)%s*$")
-			if #clean_show >= 2 then
-				local cap = clean_show:gsub("(%a)([%w_']*)", function(first, rest) return first:upper() .. rest:lower() end)
-				return string.format("%s — Episode %d", cap, tonumber(e4))
-			end
-		end
-	end
-
-	local y = norm:match("[%s%[]+(19%d%d)[%s%]%)]") or norm:match("[%s%[]+(20%d%d)[%s%]%)]")
-	if y then
-		local prefix = norm:match("^(.-)[%s%[]+" .. y)
-		if prefix then
-			local clean_title = prefix:gsub("[^%w]+", " "):match("^%s*(.-)%s*$")
-			if #clean_title >= 2 then
-				local cap = clean_title:gsub("(%a)([%w_']*)", function(first, rest) return first:upper() .. rest:lower() end)
-				return string.format("%s (%s)", cap, y)
-			end
-		end
-	end
-
-	local clean_plain = norm:gsub("[^%w]+", " "):match("^%s*(.-)%s*$")
-	if #clean_plain > 0 then
-		local cap = clean_plain:gsub("(%a)([%w_']*)", function(first, rest) return first:upper() .. rest:lower() end)
-		local words = {}
-		for w in cap:gmatch("%S+") do
-			if #words < 5 then table.insert(words, w) end
-		end
-		return table.concat(words, " ")
-	end
-
-	return name
-end
 
 -- ============================================================================
 -- Episode Detection & Probing Engine
@@ -484,10 +597,14 @@ local function record_current_position()
 	local dur = mp.get_property_number("duration")
 	if not pos or pos < 5 then return end
 
-	local canonical_key = get_canonical_key(path)
+	local canonical_key, filename = get_canonical_key(path)
 	if not canonical_key or canonical_key == "" then return end
 
-	local title = mp.get_property("media-title") or mp.get_property("filename") or canonical_key
+	local title = mp.get_property("media-title") or mp.get_property("filename") or filename or canonical_key
+	if not title or title == "" or is_promo_title(title) then
+		title = (filename and filename ~= "") and filename or canonical_key
+	end
+
 	local save_pos = pos
 	local is_completed = false
 	if dur and dur > 0 and pos >= (dur * 0.90) then
@@ -503,6 +620,7 @@ local function record_current_position()
 		completed = is_completed,
 		updated_at = os.time(),
 	}
+	prune_history_duplicates()
 	save_history()
 end
 
@@ -718,101 +836,46 @@ end
 -- Interactive uosc Menu
 -- ============================================================================
 local function get_recent_history_items(max_count)
-	local series_groups = {}
-	local group_order = {}
+	prune_history_duplicates()
 
-	local healed_any = false
-	for k, v in pairs(stream_history) do
-		if v and (v.url or v.title) then
-			local _, fn = get_canonical_key(v.url or k)
-			local title = v.title or k
-			if not title or title == "" or is_promo_title(title) then
-				title = fn ~= "" and fn or title
-				v.title = title
-				healed_any = true
-			end
-
-			local fn_skey, fn_season, fn_ep = parse_series_info(fn)
-			local skey, season, ep = parse_series_info(title)
-			if fn_skey and not skey then
-				title = fn
-				skey, season, ep = fn_skey, fn_season, fn_ep
-				v.title = fn
-				healed_any = true
-			end
-
-			local item_data = {
-				key = k,
-				data = v,
-				title = title,
-				season = season or 1,
-				episode = ep or 1,
-				position = v.position or 0,
-				duration = v.duration or 0,
-				completed = v.completed or false,
-				updated_at = v.updated_at or 0,
-			}
-
-			if skey then
-				if not series_groups[skey] then
-					series_groups[skey] = {}
-					table.insert(group_order, {type = "series", key = skey})
-				end
-				table.insert(series_groups[skey], item_data)
-			else
-				table.insert(group_order, {type = "standalone", data = item_data})
-			end
-		end
-	end
-
-	-- For each series, select the best / last watched episode:
-	-- Discard accidental previews (< 45s and not completed) if any meaningful episodes exist.
-	-- Prefer actively in-progress episodes over completed earlier episodes.
 	local candidate_list = {}
-	for _, grp in ipairs(group_order) do
-		if grp.type == "standalone" then
-			table.insert(candidate_list, grp.data)
-		elseif grp.type == "series" and series_groups[grp.key] then
-			local ep_list = series_groups[grp.key]
-			series_groups[grp.key] = nil
-
-			local meaningful = {}
-			for _, e in ipairs(ep_list) do
-				local is_mean = e.completed or (e.position >= 45) or (e.duration > 0 and (e.position / e.duration) >= 0.03)
-				if is_mean then
-					table.insert(meaningful, e)
-				end
+	for k, v in pairs(stream_history) do
+		local url = (type(v) == "table" and v.url) or k
+		if is_web_url(url) and is_web_url(k) then
+			local _, fn = get_canonical_key(url)
+			local raw_title = v.title or fn or k
+			if not raw_title or raw_title == "" or is_promo_title(raw_title) then
+				raw_title = (fn and fn ~= "") and fn or raw_title
 			end
 
-			local pool = #meaningful > 0 and meaningful or ep_list
-			table.sort(pool, function(a, b)
-				local a_in_progress = (not a.completed) and (a.position >= 45) and 1 or 0
-				local b_in_progress = (not b.completed) and (b.position >= 45) and 1 or 0
-				if a_in_progress ~= b_in_progress then
-					return a_in_progress > b_in_progress
-				end
-				if (a.updated_at or 0) ~= (b.updated_at or 0) then
-					return (a.updated_at or 0) > (b.updated_at or 0)
-				end
-				local a_num = a.season * 10000 + a.episode
-				local b_num = b.season * 10000 + b.episode
-				return a_num > b_num
-			end)
+			local pos = tonumber(v.position) or 0
+			local dur = tonumber(v.duration) or 0
+			local completed = v.completed or false
+			if dur > 0 and pos >= (dur * 0.90) then
+				pos = 0
+				completed = true
+			end
 
-			table.insert(candidate_list, pool[1])
+			table.insert(candidate_list, {
+				key = k,
+				url = url,
+				title = raw_title,
+				position = pos,
+				duration = dur,
+				completed = completed,
+				updated_at = tonumber(v.updated_at) or 0,
+			})
 		end
 	end
-
-	if healed_any then save_history() end
 
 	table.sort(candidate_list, function(a, b)
 		return (a.updated_at or 0) > (b.updated_at or 0)
 	end)
 
 	local items = {}
-	for i = 1, math.min(max_count or 10, #candidate_list) do
+	local count = math.min(max_count or 10, #candidate_list)
+	for i = 1, count do
 		local cand = candidate_list[i]
-		local d = cand.data
 		local pos = cand.position
 		local dur = cand.duration
 		local pct = dur > 0 and math.floor((pos / dur) * 100) or 0
@@ -835,9 +898,12 @@ local function get_recent_history_items(max_count)
 		local raw_title = cand.title or cand.key
 		if raw_title:match("^https?://") then
 			local _, fn = get_canonical_key(raw_title)
-			raw_title = fn ~= "" and fn or raw_title:sub(1, 40)
-	end
+			raw_title = (fn and fn ~= "") and fn or raw_title:sub(1, 40)
+		end
 		local display_title = format_clean_title(raw_title)
+		if not display_title or display_title == "" then
+			display_title = raw_title
+		end
 
 		table.insert(items, {
 			title = display_title,
@@ -1013,9 +1079,15 @@ mp.register_script_message("open-url-play-clip", function()
 	end
 end)
 
-mp.register_script_message("open-url-load-history", function(key)
+mp.register_script_message("open-url-load-history", function(...)
 	mp.commandv("script-message-to", "uosc", "close-menu")
+	local args = {...}
+	if #args == 0 then return end
+	local key = table.concat(args, " ")
 	local entry = stream_history[key]
+	if not entry and #args > 0 then
+		entry = stream_history[args[1]]
+	end
 	if entry and entry.url then
 		play_stream_url(entry.url, entry.position)
 	else

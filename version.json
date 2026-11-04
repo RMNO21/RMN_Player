@@ -1,11 +1,11 @@
 {
   "name": "RMN-Player",
-  "version": "1.5.1",
-  "version_code": 151,
+  "version": "1.5.2",
+  "version_code": 152,
   "release_date": "2026-11-04",
   "channel": "stable",
   "repository": "RMNO21/RMN_Player",
-  "changelog": "Fix: Comprehensive online streaming overhaul — resolved 'Connecting to stream' hang, isolated stream watch history from local playback positions (preventing premature EOF crashes), disabled conflicting native mpv watch-later on streams, removed synthetic Origin/Referer CORS injection, optimized 512MB RAM cache, added live buffering & error alerts, and updated cross-platform updater scripts to sync mpv.conf.",
+  "changelog": "Fix: Stream Online history cleanup — strictly excluded local files from web history, deduplicated movie entries to only keep the latest playback, and consolidated TV series episodes so only the last watched episode remains in history.",
   "html_url": "https://github.com/RMNO21/RMN_Player",
   "download_url": "https://github.com/RMNO21/RMN_Player/archive/refs/heads/main.zip"
 }
