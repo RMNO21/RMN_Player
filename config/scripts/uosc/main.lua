@@ -803,7 +803,7 @@ local function get_subtitle_style_items()
 		},
 		{
 			title = 'Reset Subtitle Styles to Defaults',
-			value = 'set sub-color "#FFFFFF"; set sub-font "sans-serif"; set sub-scale 1.0; set sub-border-style outline-and-shadow; set sub-border-size 3; set sub-border-color "#000000"; set sub-shadow-offset 0; set sub-back-color "#00000000"; set sub-ass-override yes; show-text "Subtitle Styles Reset to Defaults"',
+			value = 'set sub-color "#FFFFFF"; set sub-font "Vazirmatn"; set sub-scale 1.0; set sub-border-style outline-and-shadow; set sub-border-size 2.8; set sub-border-color "#000000"; set sub-shadow-offset 0.6; set sub-back-color "#00000000"; set sub-ass-override yes; show-text "Subtitle Styles Reset to Defaults"',
 		},
 	}
 end

@@ -1,11 +1,11 @@
 {
   "name": "RMN-Player",
-  "version": "1.5.4",
-  "version_code": 154,
+  "version": "1.5.5",
+  "version_code": 155,
   "release_date": "2026-11-04",
   "channel": "stable",
   "repository": "RMNO21/RMN_Player",
-  "changelog": "Fix: Stream network resilience & auto-reconnect engine — automatically reconnects and resumes playback without closing the player when internet disconnects and restores, adds dead socket stall watchdog, native FFmpeg reconnect on network errors, Ctrl+R reconnect shortcut, and 1-click Reconnect menu button.",
+  "changelog": "Fix: High-DPI Typography & Font Clarity on Linux — bundled official Vazirmatn font family (Regular, Medium, SemiBold, Bold) directly in player fonts, configured crisp sub-hinting, native display subtitle rendering (blend-subtitles=no), optimized border and shadow contrast, and set Vazirmatn as the default UI & subtitle font across Linux and Windows.",
   "html_url": "https://github.com/RMNO21/RMN_Player",
   "download_url": "https://github.com/RMNO21/RMN_Player/archive/refs/heads/main.zip"
 }

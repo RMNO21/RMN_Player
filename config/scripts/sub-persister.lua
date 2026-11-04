@@ -165,6 +165,12 @@ if not loaded then
     end
 end
 
+-- Upgrade legacy or fallback font to high-clarity Vazirmatn
+if settings['sub-font'] == 'sans-serif' or not settings['sub-font'] or settings['sub-font'] == '' then
+    settings['sub-font'] = 'Vazirmatn'
+    schedule_save()
+end
+
 -- Ensure saved subtitle settings are strictly re-applied when any file is loaded
 mp.register_event('file-loaded', function()
     apply_settings()

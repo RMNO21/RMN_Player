@@ -67,7 +67,13 @@ if [ -d "$SRC_CONFIG" ]; then
     mkdir -p "$CONFIG_DIR"
     [ -d "$SRC_CONFIG/scripts" ] && cp -rf "$SRC_CONFIG/scripts" "$CONFIG_DIR/"
     [ -d "$SRC_CONFIG/shaders" ] && cp -rf "$SRC_CONFIG/shaders" "$CONFIG_DIR/"
-    [ -d "$SRC_CONFIG/fonts" ] && cp -rf "$SRC_CONFIG/fonts" "$CONFIG_DIR/"
+    if [ -d "$SRC_CONFIG/fonts" ]; then
+        cp -rf "$SRC_CONFIG/fonts" "$CONFIG_DIR/"
+        USER_FONTS="${XDG_DATA_HOME:-$HOME/.local/share}/fonts/RMN-Player"
+        mkdir -p "$USER_FONTS"
+        cp -rf "$SRC_CONFIG/fonts"/* "$USER_FONTS/" 2>/dev/null || true
+        command -v fc-cache >/dev/null 2>&1 && fc-cache -f "$USER_FONTS" >/dev/null 2>&1 || true
+    fi
     [ -d "$SRC_CONFIG/script-opts" ] && cp -rf "$SRC_CONFIG/script-opts" "$CONFIG_DIR/"
     [ -f "$SRC_CONFIG/input.conf" ] && cp -f "$SRC_CONFIG/input.conf" "$CONFIG_DIR/"
     [ -f "$SRC_CONFIG/mpv.conf" ] && cp -f "$SRC_CONFIG/mpv.conf" "$CONFIG_DIR/"
