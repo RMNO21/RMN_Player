@@ -70,6 +70,7 @@ if [ -d "$SRC_CONFIG" ]; then
     [ -d "$SRC_CONFIG/fonts" ] && cp -rf "$SRC_CONFIG/fonts" "$CONFIG_DIR/"
     [ -d "$SRC_CONFIG/script-opts" ] && cp -rf "$SRC_CONFIG/script-opts" "$CONFIG_DIR/"
     [ -f "$SRC_CONFIG/input.conf" ] && cp -f "$SRC_CONFIG/input.conf" "$CONFIG_DIR/"
+    [ -f "$SRC_CONFIG/mpv.conf" ] && cp -f "$SRC_CONFIG/mpv.conf" "$CONFIG_DIR/"
     [ -f "$SRC_CONFIG/version.json" ] && cp -f "$SRC_CONFIG/version.json" "$CONFIG_DIR/"
     [ -f "$EXTRACTED_ROOT/update-rmn.sh" ] && cp -f "$EXTRACTED_ROOT/update-rmn.sh" "$CONFIG_DIR/"
     [ -f "$CONFIG_DIR/scripts/uosc/bin/ziggy-linux" ] && chmod +x "$CONFIG_DIR/scripts/uosc/bin/ziggy-linux" 2>/dev/null || true

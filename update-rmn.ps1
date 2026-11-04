@@ -78,6 +78,9 @@ try {
         if (Test-Path "$srcConfig\input.conf") {
             Copy-Item "$srcConfig\input.conf" "$ConfigDir\input.conf" -Force -ErrorAction SilentlyContinue
         }
+        if (Test-Path "$srcConfig\mpv.conf") {
+            Copy-Item "$srcConfig\mpv.conf" "$ConfigDir\mpv.conf" -Force -ErrorAction SilentlyContinue
+        }
         if (Test-Path "$srcConfig\version.json") {
             Copy-Item "$srcConfig\version.json" "$ConfigDir\version.json" -Force -ErrorAction SilentlyContinue
         }

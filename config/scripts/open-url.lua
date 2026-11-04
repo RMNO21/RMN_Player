@@ -62,6 +62,14 @@ end
 ensure_cache_dir()
 
 -- ============================================================================
+-- URL Protocol Verification
+-- ============================================================================
+local function is_web_url(url)
+	if not url or type(url) ~= "string" then return false end
+	return url:match("^https?://") ~= nil or url:match("^ytdl://") ~= nil
+end
+
+-- ============================================================================
 -- JSON Persistence
 -- ============================================================================
 local function load_history()
@@ -72,7 +80,19 @@ local function load_history()
 		if content and content ~= "" then
 			local ok, data = pcall(utils.parse_json, content)
 			if ok and type(data) == "table" then
-				stream_history = data
+				local clean = {}
+				for k, v in pairs(data) do
+					if type(v) == "table" and is_web_url(v.url or k) then
+						local pos = tonumber(v.position) or 0
+						local dur = tonumber(v.duration) or 0
+						if dur > 0 and pos >= (dur * 0.90) then
+							v.position = 0
+							v.completed = true
+						end
+						clean[k] = v
+					end
+				end
+				stream_history = clean
 				msg.debug("Loaded stream watch history (" .. #stream_history .. " entries)")
 				return
 			end
@@ -166,10 +186,6 @@ end
 -- ============================================================================
 -- URL Processing & Canonical Keys (Anti-Expiry Resumption)
 -- ============================================================================
-local function is_web_url(url)
-	if not url or type(url) ~= "string" then return false end
-	return url:match("^https?://") ~= nil or url:match("^ytdl://") ~= nil
-end
 
 -- Extracts origin domain for Referer/Origin header injection
 local function get_origin(url)
@@ -458,22 +474,28 @@ end
 -- Stream Position Tracker & Watch-Later Persistence
 -- ============================================================================
 local function record_current_position()
-	if not current_stream_key then return end
+	local path = mp.get_property("path") or ""
+	-- ONLY record for online web streams, NEVER for local files
+	if not is_web_url(path) then
+		return
+	end
+
 	local pos = mp.get_property_number("time-pos")
 	local dur = mp.get_property_number("duration")
 	if not pos or pos < 5 then return end
 
-	local title = mp.get_property("media-title") or mp.get_property("filename") or current_stream_key
-	local path = mp.get_property("path") or ""
+	local canonical_key = get_canonical_key(path)
+	if not canonical_key or canonical_key == "" then return end
 
+	local title = mp.get_property("media-title") or mp.get_property("filename") or canonical_key
 	local save_pos = pos
 	local is_completed = false
-	if dur and dur > 0 and pos >= (dur * 0.92) then
+	if dur and dur > 0 and pos >= (dur * 0.90) then
 		save_pos = 0
 		is_completed = true
 	end
 
-	stream_history[current_stream_key] = {
+	stream_history[canonical_key] = {
 		position = save_pos,
 		duration = dur or 0,
 		title = title,
@@ -551,47 +573,34 @@ local function play_stream_url(url, target_pos)
 	mp.set_property("user-agent", user_agent)
 	-- Clear custom headers to avoid strict CORS/403 blocks from CDNs
 	mp.set_property("http-header-fields", "")
+	-- CRITICAL: Always reset start property so it NEVER inherits a stale offset
+	mp.set_property("start", "none")
+
+	-- If previously playing an online stream, record its position before switching
+	record_current_position()
 
 	local canonical_key, filename = get_canonical_key(url)
-	current_stream_key = canonical_key
 
 	-- Check for saved watch-later position
 	local entry = stream_history[canonical_key]
 	local resume_pos = target_pos
-	if not resume_pos and entry and entry.position and entry.position > 15 then
+	if not resume_pos and entry and entry.position and entry.position > 15 and not entry.completed then
 		resume_pos = entry.position
 	end
 
-	if resume_pos and resume_pos > 15 then
-		pending_resume_pos = resume_pos
-		-- Pre-set start position so demuxer directly requests byte range without downloading prior parts!
-		mp.set_property("start", tostring(math.floor(resume_pos)))
-	else
-		pending_resume_pos = nil
-		mp.set_property("start", "none")
-	end
+	-- Store pending resume position to be safely validated against actual duration in file-loaded
+	pending_resume_pos = resume_pos
 
 	local raw_name = (filename ~= "" and filename or url:sub(1, 50))
 	local display_title = (entry and entry.title and entry.title ~= "") and entry.title or format_clean_title(raw_name)
 	if not display_title or display_title == "" then display_title = raw_name end
 
-	msg.info("Playing stream: " .. url .. " (Canonical: " .. canonical_key .. ", Start: " .. tostring(pending_resume_pos or 0) .. "s)")
-
-	-- If playback is active, save position and immediately stop old playback.
-	-- This kills old background network connections, flushes video/audio decoders and cache,
-	-- putting the player in clean idle state so the new stream loads at maximum speed!
-	local cur_path = mp.get_property("path")
-	if cur_path and cur_path ~= "" then
-		if current_stream_key then
-			record_current_position()
-		end
-		mp.command("stop")
-	end
+	msg.info("Playing stream: " .. url .. " (Canonical: " .. canonical_key .. ", Resume: " .. tostring(pending_resume_pos or 0) .. "s)")
 
 	-- Start live connection and buffering monitor
 	start_loading_monitor(display_title, url)
 
-	-- Load file cleanly into idle player
+	-- Load new stream cleanly and atomically into player (replaces current file without stop race)
 	mp.commandv("loadfile", url, "replace")
 end
 
@@ -610,7 +619,6 @@ end)
 mp.register_event("file-loaded", function()
 	local path = mp.get_property("path") or ""
 	if not is_web_url(path) then
-		current_stream_key = nil
 		pending_resume_pos = nil
 		stop_loading_monitor()
 		return
@@ -618,29 +626,26 @@ mp.register_event("file-loaded", function()
 
 	local origin = get_origin(path)
 	local canonical_key = get_canonical_key(path)
-	current_stream_key = canonical_key
 
 	-- Check for saved watch-later position
-	if pending_resume_pos and pending_resume_pos > 15 then
-		local pos = pending_resume_pos
-		pending_resume_pos = nil
-		local mins = math.floor(pos / 60)
-		local secs = math.floor(pos % 60)
-		mp.osd_message(string.format("▶ Resumed at %02d:%02d (Saved Stream Position)", mins, secs), 3.5)
-		mp.set_property("start", "none")
-	else
+	local resume_pos = pending_resume_pos
+	pending_resume_pos = nil
+
+	if not resume_pos or resume_pos <= 15 then
 		local entry = stream_history[canonical_key]
-		if entry and entry.position and entry.position > 15 then
-			local cur_time = mp.get_property_number("time-pos") or 0
-			if cur_time < 10 then
-				local pos = entry.position
-				mp.add_timeout(0.1, function()
-					mp.commandv("seek", pos, "absolute", "exact")
-					local mins = math.floor(pos / 60)
-					local secs = math.floor(pos % 60)
-					mp.osd_message(string.format("▶ Resumed at %02d:%02d (Saved Stream Position)", mins, secs), 3.5)
-				end)
-			end
+		if entry and entry.position and entry.position > 15 and not entry.completed then
+			resume_pos = entry.position
+		end
+	end
+
+	if resume_pos and resume_pos > 15 then
+		local dur = mp.get_property_number("duration", 0)
+		-- Safety check: only seek if duration is unknown (live stream) or resume_pos is safely within duration
+		if dur <= 0 or resume_pos < (dur * 0.90) then
+			mp.commandv("seek", resume_pos, "absolute", "exact")
+			local mins = math.floor(resume_pos / 60)
+			local secs = math.floor(resume_pos % 60)
+			mp.osd_message(string.format("▶ Resumed at %02d:%02d (Saved Position)", mins, secs), 3.5)
 		end
 	end
 
@@ -658,10 +663,10 @@ mp.register_event("end-file", function(event)
 		local err = event.file_error or event.error or "Connection error or stream unavailable"
 		msg.error("Stream loading failed: " .. tostring(err))
 		mp.osd_message("❌ Stream connection failed: " .. tostring(err), 4.5)
-		current_stream_key = nil
 		pending_resume_pos = nil
 	elseif event.reason == "eof" or event.reason == "stop" then
 		stop_loading_monitor()
+		pending_resume_pos = nil
 	end
 end)
 
