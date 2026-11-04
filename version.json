@@ -1,11 +1,11 @@
 {
   "name": "RMN-Player",
-  "version": "1.3.9",
-  "version_code": 139,
-  "release_date": "2026-10-29",
+  "version": "1.4.0",
+  "version_code": 140,
+  "release_date": "2026-11-04",
   "channel": "stable",
   "repository": "RMNO21/RMN_Player",
-  "changelog": "Fix: Enabled timeline thumbnail preview for online streams with HTTP header injection, network buffer tuning, and asynchronous property synchronization.",
+  "changelog": "Fix: Cross-platform ambient background fill & 200+ volume boost for Linux, native monitor aspect detection, and multimedia keybindings.",
   "html_url": "https://github.com/RMNO21/RMN_Player",
   "download_url": "https://github.com/RMNO21/RMN_Player/archive/refs/heads/main.zip"
 }

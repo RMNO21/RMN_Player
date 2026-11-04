@@ -8,7 +8,7 @@ local mp = require("mp")
 local msg = require("mp.msg")
 local ffi_loaded, ffi = pcall(require, "ffi")
 
-if ffi_loaded then
+if ffi_loaded and ffi.os == "Windows" then
     pcall(function()
         ffi.cdef[[
             typedef void* HMONITOR;
@@ -50,54 +50,61 @@ local SOLID_LOOKAHEAD = 7        -- video delay frames (~233ms at 30fps, ~156ms 
 local original_audio_delay = nil -- saved audio-delay before solid mode compensation
 
 local function get_screen_aspect()
-    -- 1. Query the physical active monitor where MPV is located via Win32 API
-    if ffi_loaded and ffi.C and ffi.C.GetMonitorInfoW and ffi.C.MonitorFromWindow then
-        local hwnd = nil
-        if ffi.C.GetActiveWindow then
-            hwnd = ffi.C.GetActiveWindow()
-        end
-        if (hwnd == nil or ffi.cast("uintptr_t", hwnd) == 0) and ffi.C.GetForegroundWindow then
-            hwnd = ffi.C.GetForegroundWindow()
-        end
+    -- 1. Windows: Query the physical active monitor where MPV is located via Win32 API
+    if ffi_loaded and ffi.os == "Windows" and ffi.C then
+        local ok, res = pcall(function()
+            local hwnd = nil
+            if ffi.C.GetActiveWindow then
+                hwnd = ffi.C.GetActiveWindow()
+            end
+            if (hwnd == nil or ffi.cast("uintptr_t", hwnd) == 0) and ffi.C.GetForegroundWindow then
+                hwnd = ffi.C.GetForegroundWindow()
+            end
 
-        if hwnd ~= nil and ffi.cast("uintptr_t", hwnd) ~= 0 then
-            local hmon = ffi.C.MonitorFromWindow(hwnd, 2) -- MONITOR_DEFAULTTONEAREST = 2
-            if hmon ~= nil and ffi.cast("uintptr_t", hmon) ~= 0 then
-                local mi = ffi.new("MONITORINFO")
-                mi.cbSize = ffi.sizeof("MONITORINFO")
-                if ffi.C.GetMonitorInfoW(hmon, mi) ~= 0 then
-                    local mw = mi.rcMonitor.right - mi.rcMonitor.left
-                    local mh = mi.rcMonitor.bottom - mi.rcMonitor.top
-                    if mw > 0 and mh > 0 then
-                        return mw / mh
+            if hwnd ~= nil and ffi.cast("uintptr_t", hwnd) ~= 0 and ffi.C.MonitorFromWindow and ffi.C.GetMonitorInfoW then
+                local hmon = ffi.C.MonitorFromWindow(hwnd, 2) -- MONITOR_DEFAULTTONEAREST = 2
+                if hmon ~= nil and ffi.cast("uintptr_t", hmon) ~= 0 then
+                    local mi = ffi.new("MONITORINFO")
+                    mi.cbSize = ffi.sizeof("MONITORINFO")
+                    if ffi.C.GetMonitorInfoW(hmon, mi) ~= 0 then
+                        local mw = mi.rcMonitor.right - mi.rcMonitor.left
+                        local mh = mi.rcMonitor.bottom - mi.rcMonitor.top
+                        if mw > 0 and mh > 0 then
+                            return mw / mh
+                        end
                     end
                 end
             end
-        end
 
-        -- 2. Fallback to Primary Monitor Metrics
-        if ffi.C.GetSystemMetrics then
-            local sw = ffi.C.GetSystemMetrics(0)
-            local sh = ffi.C.GetSystemMetrics(1)
-            if sw and sh and sw > 0 and sh > 0 then
-                return sw / sh
+            -- 2. Fallback to Primary Monitor Metrics
+            if ffi.C.GetSystemMetrics then
+                local sw = ffi.C.GetSystemMetrics(0)
+                local sh = ffi.C.GetSystemMetrics(1)
+                if sw and sh and sw > 0 and sh > 0 then
+                    return sw / sh
+                end
             end
+            return nil
+        end)
+        if ok and res then
+            return res
         end
     end
 
-    -- 3. Fallback to MPV OSD / Display dimensions
-    local osd_w, osd_h = mp.get_osd_size()
-    if osd_w and osd_h and osd_w > 0 and osd_h > 0 then
-        return osd_w / osd_h
-    end
-
+    -- 2. Physical display dimensions from mpv backend (Linux X11/Wayland, macOS, Windows)
     local dw = mp.get_property_number("display-width", 0)
     local dh = mp.get_property_number("display-height", 0)
     if dw > 0 and dh > 0 then
         return dw / dh
     end
 
-    return 16 / 10
+    -- 3. Fallback to MPV OSD dimensions (in fullscreen, this matches screen resolution)
+    local osd_w, osd_h = mp.get_osd_size()
+    if osd_w and osd_h and osd_w > 0 and osd_h > 0 then
+        return osd_w / osd_h
+    end
+
+    return 16 / 9
 end
 
 local function apply_effect()
@@ -108,7 +115,8 @@ local function apply_effect()
         if last_applied_vf ~= "" then
             mp.set_property("glsl-shaders", "")
             mp.set_property("vf", "")
-            mp.set_property("video-aspect-override", "-2")
+            pcall(mp.set_property, "video-aspect-override", "no")
+            pcall(mp.set_property, "video-aspect-mode", "container")
             mp.set_property("hwdec", "auto-safe")
             last_applied_vf = ""
         end
@@ -133,7 +141,8 @@ local function apply_effect()
         if last_applied_vf ~= "" then
             mp.set_property("glsl-shaders", "")
             mp.set_property("vf", "")
-            mp.set_property("video-aspect-override", "-2")
+            pcall(mp.set_property, "video-aspect-override", "no")
+            pcall(mp.set_property, "video-aspect-mode", "container")
             mp.set_property("hwdec", "auto-safe")
             last_applied_vf = ""
         end
@@ -238,13 +247,14 @@ local function apply_effect()
         mp.set_property("video-align-x", "0")
         mp.set_property("video-align-y", "0")
         mp.set_property("vf", vf_str)
-        mp.set_property("video-aspect-override", "-1")
+        pcall(mp.set_property, "video-aspect-override", "no")
         last_applied_vf = vf_str
         msg.info(string.format("Applied %s mode in fullscreen (%dx%d -> %dx%d)", mode_id, vw, vh, target_w, target_h))
     else
         mp.set_property("glsl-shaders", "")
         mp.set_property("vf", "")
-        mp.set_property("video-aspect-override", "-2")
+        pcall(mp.set_property, "video-aspect-override", "no")
+        pcall(mp.set_property, "video-aspect-mode", "container")
         mp.set_property("hwdec", "auto-safe")
         last_applied_vf = ""
     end

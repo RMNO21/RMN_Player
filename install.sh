@@ -198,6 +198,12 @@ if [ -d "$PACKAGE_CONFIG" ]; then
         write_status "Copied update-rmn.sh" "Info"
     fi
 
+    # Link portable_config in player directory if player exists
+    if [ -d "$INSTALL_DIR/player" ] && [ ! -e "$INSTALL_DIR/player/portable_config" ]; then
+        ln -sfn "$CONFIG_DIR" "$INSTALL_DIR/player/portable_config" 2>/dev/null || true
+        write_status "Linked portable_config in player directory" "Info"
+    fi
+
     write_status "Configuration files installed to: $CONFIG_DIR" "Success"
 else
     write_status "Config directory not found at $PACKAGE_CONFIG" "Error"
@@ -246,6 +252,7 @@ if [ -z "$MPV_EXEC" ]; then
 fi
 
 export MPV_HOME="$CONFIG_DIR"
+unset LC_ALL
 export LC_NUMERIC=C
 
 if [ $# -eq 0 ]; then

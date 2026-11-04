@@ -37,7 +37,7 @@ end
 
 function VolumeSlider:set_from_cursor()
 	local volume_fraction = (self.by - cursor.y - self.border_size) / (self.by - self.ay - self.border_size)
-	if volume_fraction >= 1.05 then
+	if volume_fraction >= 0.99 or cursor.y <= (self.ay + self.border_size + 2) then
 		self:set_volume(205)
 	else
 		self:set_volume(clamp(0, volume_fraction * 200, 200))
