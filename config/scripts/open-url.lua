@@ -497,6 +497,7 @@ local function get_next_episode_url(url, step)
 			local num = tonumber(num_str)
 			if num then
 				local next_num = num + step
+				if next_num < 1 then return nil, nil end
 				local fmt = string.format("%%0%dd", #num_str)
 				local next_num_str = string.format(fmt, next_num)
 
@@ -515,6 +516,72 @@ local function get_next_episode_url(url, step)
 		end
 	end
 	return nil, nil
+end
+
+-- Asynchronous probing of previous episode (if available, inserts before current episode in playlist)
+local function probe_and_queue_prev(base_url, origin)
+	if not autoload_episodes then return end
+
+	local candidate_url, prev_ep_label = get_next_episode_url(base_url, -1)
+	if not candidate_url then return end
+
+	-- Check if candidate is already in playlist
+	local count = mp.get_property_number("playlist-count", 0)
+	for i = 0, count - 1 do
+		local pl_path = mp.get_property("playlist/" .. i .. "/filename")
+		if pl_path and pl_path == candidate_url then
+			return
+		end
+	end
+
+	local user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+	local is_win = (mp.get_property_native("platform") == "windows" or package.config:sub(1,1) == "\\")
+	local curl_bin = is_win and "curl.exe" or "curl"
+	local args = {
+		curl_bin,
+		"-I", "-L", "-s", "-k",
+		"--connect-timeout", "5",
+		"--max-time", "8",
+		"-A", user_agent,
+		candidate_url,
+	}
+
+	mp.command_native_async({
+		name = "subprocess",
+		playback_only = false,
+		capture_stdout = true,
+		capture_stderr = true,
+		args = args,
+	}, function(success, res, err)
+		if success and res and res.status == 0 and res.stdout then
+			local is_valid = false
+			for status_line in res.stdout:gmatch("HTTP/%d%.?%d?%s+(%d%d%d)") do
+				local code = tonumber(status_line)
+				if code and (code == 200 or code == 206 or (code >= 300 and code < 400)) then
+					is_valid = true
+					break
+				end
+			end
+
+			if is_valid then
+				-- Check again before inserting
+				local cur_count = mp.get_property_number("playlist-count", 0)
+				for i = 0, cur_count - 1 do
+					local pl_path = mp.get_property("playlist/" .. i .. "/filename")
+					if pl_path and pl_path == candidate_url then
+						return
+					end
+				end
+
+				local cur_pos = mp.get_property_number("playlist-pos", 0)
+				msg.info("Autoloaded previous online episode: " .. candidate_url)
+				mp.commandv("loadfile", candidate_url, "append")
+				-- Move from the end of playlist to right before the currently playing episode
+				mp.commandv("playlist-move", cur_count, cur_pos)
+				mp.osd_message("Added previous episode: E" .. tostring(prev_ep_label), 3)
+			end
+		end
+	end)
 end
 
 -- Asynchronous probing of next episode via curl.exe HEAD request
@@ -767,8 +834,9 @@ mp.register_event("file-loaded", function()
 		end
 	end
 
-	-- Trigger background probing for next episodes ONLY AFTER current stream is successfully loaded!
+	-- Trigger background probing for previous & next episodes ONLY AFTER current stream is successfully loaded!
 	mp.add_timeout(2.0, function()
+		probe_and_queue_prev(path, origin)
 		probe_and_queue_next(path, origin, 1, 3)
 	end)
 end)
